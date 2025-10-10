@@ -23,34 +23,94 @@ st.set_page_config(
 
 def play_audio(text, rate=100):
     """Play text using Google TTS with specified speech rate."""
-    try:
-        tts = gTTS(text=text, lang='en', slow=(rate < 80))
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-            temp_file = fp.name
-            tts.save(temp_file)
-        
-        # Display audio player with autoplay enabled
+    import time
+    
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
         try:
-            with open(temp_file, 'rb') as audio_file:
-                audio_bytes = audio_file.read()
-                st.audio(audio_bytes, format='audio/mp3', autoplay=True)
-        except Exception as audio_error:
-            st.warning(f"⚠️ Audio playback issue. Please check your browser settings allow audio autoplay.")
-        
-        # Schedule cleanup after a delay (async-like)
-        try:
-            import threading
-            threading.Timer(10.0, lambda: Path(temp_file).unlink(missing_ok=True)).start()
-        except Exception:
-            # If threading fails, try immediate cleanup
+            # Add timeout and slow parameter
+            tts = gTTS(text=text, lang='en', slow=(rate < 80), timeout=10)
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+                temp_file = fp.name
+                tts.save(temp_file)
+            
+            # Verify file was created and has content
+            if not Path(temp_file).exists() or Path(temp_file).stat().st_size == 0:
+                raise Exception("Audio file not created properly")
+            
+            # Display audio player with autoplay enabled
             try:
-                Path(temp_file).unlink(missing_ok=True)
+                with open(temp_file, 'rb') as audio_file:
+                    audio_bytes = audio_file.read()
+                    
+                if len(audio_bytes) > 0:
+                    st.audio(audio_bytes, format='audio/mp3', autoplay=True)
+                    st.success("🔊 Audio ready! Tap play button if it doesn't start automatically.", icon="✅")
+                else:
+                    raise Exception("Empty audio file")
+                    
+            except Exception as audio_error:
+                st.warning(f"⚠️ Audio playback issue: {str(audio_error)}")
+                st.info("💡 Tap the play button on the audio player above to hear the word.")
+            
+            # Schedule cleanup after a delay (async-like)
+            try:
+                import threading
+                threading.Timer(15.0, lambda: Path(temp_file).unlink(missing_ok=True)).start()
             except Exception:
-                pass
+                # If threading fails, try immediate cleanup after a short delay
+                try:
+                    time.sleep(1)
+                    Path(temp_file).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            
+            # Success - break out of retry loop
+            break
+            
+        except Exception as e:
+            retry_count += 1
+            error_msg = str(e)
+            
+            if retry_count < max_retries:
+                st.warning(f"⚠️ Attempt {retry_count} failed. Retrying... ({error_msg})")
+                time.sleep(1)  # Wait before retry
+            else:
+                st.error(f"❌ Could not generate audio after {max_retries} attempts.")
+                st.error(f"**Error details:** {error_msg}")
                 
-    except Exception as e:
-        st.error(f"❌ Error generating audio: {str(e)}")
-        st.info("💡 Tip: Check your internet connection and try again.")
+                # Provide detailed troubleshooting
+                with st.expander("� Troubleshooting Steps", expanded=True):
+                    st.markdown("""
+                    ### Possible Issues:
+                    
+                    1. **Network Connection:**
+                       - Check if you have a stable internet connection
+                       - Try switching between WiFi and mobile data
+                       - Google TTS requires internet to generate audio
+                    
+                    2. **Browser Issues:**
+                       - Try refreshing the page (swipe down to refresh)
+                       - Clear browser cache
+                       - Try a different browser (Chrome, Firefox, Safari)
+                    
+                    3. **Mobile Settings:**
+                       - Disable Low Power Mode (affects network performance)
+                       - Disable Data Saver mode
+                       - Check if the site has permission to use network
+                    
+                    4. **Firewall/Network Restrictions:**
+                       - Check if your network blocks Google TTS API
+                       - Try using a different network
+                    
+                    5. **Alternative:**
+                       - Try using the "Manual Word Pronunciation" tab
+                       - Type the word manually to hear it
+                    """)
+                break
 
 @st.cache_resource
 def load_word_list():
@@ -590,7 +650,8 @@ def quiz_tile(speech_rate=100):
             with col_b:
                 if st.session_state.current_quiz_word:
                     if st.button("🔊 Play Pronunciation", key="quiz_play_btn"):
-                        play_audio(st.session_state.current_quiz_word, rate=speech_rate)
+                        with st.spinner("🎵 Generating audio... Please wait..."):
+                            play_audio(st.session_state.current_quiz_word, rate=speech_rate)
                 else:
                     st.button("🔊 Play Pronunciation", key="quiz_play_btn", disabled=True)
             
