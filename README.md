@@ -230,7 +230,7 @@ streamlit run spellbowl.py
 
 ## 👥 Credits
 
-**Made with ❤️ by MRE**
+**Made with ❤️ for MRE**
 
 **Developers:**
 - **Aashrita Choudhari** - Co-Creator & Developer
