@@ -71,7 +71,7 @@ A comprehensive pronunciation and spelling learning application built with Strea
 
 4. **Run the application:**
    ```bash
-   streamlit run voice_to_text_pronunciation.py
+   streamlit run spellbowl.py
    ```
 
 5. **Open your browser:**
@@ -224,9 +224,19 @@ For issues or questions:
 ```bash
 # Install and run in 3 commands
 pip install -r requirements.txt
-streamlit run voice_to_text_pronunciation.py
+streamlit run spellbowl.py
 # App opens at http://localhost:8501
 ```
+
+## 👥 Credits
+
+**Made with ❤️ by MRE**
+
+**Developers:**
+- **Aashrita Choudhari** - Co-Creator & Developer
+- **Rahul Choudhari** - Co-Creator & Developer
+
+*Empowering students to master pronunciation and spelling, one word at a time.*
 
 ---
 

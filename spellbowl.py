@@ -495,6 +495,27 @@ st.markdown("""
 
 st.title("🗣️ Word Pronunciation Helper")
 
+# Disclaimer and Credits
+st.markdown("""
+<div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            padding: 1.2em; 
+            border-radius: 10px; 
+            margin-bottom: 1.5em;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);'>
+    <div style='text-align: center; color: white;'>
+        <p style='margin: 0; font-size: 0.9em; font-weight: 600; opacity: 0.95;'>
+            ✨ Made with ❤️ for MRE ✨
+        </p>
+        <p style='margin: 0.3em 0 0 0; font-size: 0.85em; opacity: 0.85;'>
+            <strong>Aashrita Choudhari</strong> & <strong>Rahul Choudhari</strong>
+        </p>
+        <p style='margin: 0.5em 0 0 0; font-size: 0.75em; opacity: 0.75; font-style: italic;'>
+            Empowering students to master pronunciation and spelling
+        </p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 rate_slider = st.slider("Adjust speech rate (%)", min_value=30, max_value=150, value=100, step=10, key="speech_rate_slider")
 
 # Create tabs for different features
