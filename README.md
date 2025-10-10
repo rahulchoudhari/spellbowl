@@ -228,7 +228,55 @@ streamlit run spellbowl.py
 # App opens at http://localhost:8501
 ```
 
-## 👥 Credits
+## � Troubleshooting
+
+### AxiosError: Network Error (Samsung Tablets/Mobile Devices)
+
+If you encounter network errors on Samsung tablets or mobile devices:
+
+**1. Browser Compatibility:**
+- ✅ **Recommended:** Use Chrome or Firefox browser
+- ❌ **Avoid:** Samsung Internet Browser (has WebSocket issues)
+
+**2. Clear Browser Cache:**
+```
+Settings → Apps → Browser → Storage → Clear Cache
+```
+
+**3. Check Connection:**
+- Ensure stable Wi-Fi connection
+- Try disabling VPN if enabled
+- Refresh the page (pull down to refresh)
+
+**4. URL Access:**
+- Use HTTPS: `https://mrespellbowl.streamlit.app`
+- Avoid using bookmarks (they may cache old settings)
+- Type URL directly or use a fresh link
+
+**5. Mobile Settings:**
+- Enable JavaScript
+- Allow cookies for the site
+- Disable battery optimization for browser
+- Check if "Lite mode" or "Data saver" is disabled
+
+**6. If Still Not Working:**
+- Try on different device to confirm it's device-specific
+- Contact us with:
+  - Device model (e.g., Samsung Galaxy Tab A7)
+  - Browser version
+  - Error message screenshot
+
+### Audio Not Playing
+- Check device volume
+- Tap the play button on audio player
+- Some browsers require user interaction before autoplay
+
+### PDF Upload Issues
+- Ensure PDF is text-based (not scanned images)
+- File size should be under 200MB
+- Try a different PDF if extraction fails
+
+## �👥 Credits
 
 **Made with ❤️ for MRE**
 

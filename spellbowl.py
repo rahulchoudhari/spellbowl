@@ -125,52 +125,51 @@ def get_word_info(word):
             'error': str(e)
         }
 
+@st.cache_data
 def get_system_generated_words(level):
-    """Get system generated words based on difficulty level."""
-    # Level 1: School Grade 1-3 (Simple 3-5 letter words)
-    level1_words = [
-        'cat', 'dog', 'run', 'jump', 'play', 'sun', 'moon', 'star', 'tree', 'bird',
-        'fish', 'book', 'ball', 'home', 'door', 'window', 'table', 'chair', 'water', 'food',
-        'apple', 'happy', 'good', 'make', 'work', 'help', 'give', 'take', 'open', 'close',
-        'walk', 'talk', 'read', 'write', 'smile', 'laugh', 'sleep', 'wake', 'eat', 'drink',
-        'love', 'like', 'want', 'need', 'have', 'look', 'see', 'hear', 'feel', 'know'
-    ]
+    """Get system generated words based on difficulty level using NLTK corpus."""
+    # Load NLTK word list
+    word_list = load_word_list()
     
-    # Level 2: School Grade 4-6 (Medium 5-7 letter words)
-    level2_words = [
-        'school', 'teacher', 'student', 'pencil', 'science', 'history', 'culture', 'nature', 'animal', 'garden',
-        'computer', 'library', 'picture', 'question', 'answer', 'problem', 'solution', 'practice', 'example', 'exercise',
-        'morning', 'evening', 'afternoon', 'weather', 'summer', 'winter', 'spring', 'autumn', 'mountain', 'river',
-        'ocean', 'island', 'forest', 'desert', 'village', 'city', 'country', 'planet', 'universe', 'galaxy',
-        'friend', 'family', 'parent', 'brother', 'sister', 'teacher', 'doctor', 'engineer', 'artist', 'musician'
-    ]
+    # Filter words by length and complexity for each level
+    if level == 'Level 1 (Grade 1-3)':
+        # Simple 3-5 letter common words
+        filtered_words = [
+            word for word in word_list 
+            if 3 <= len(word) <= 5 
+            and word.isalpha() 
+            and word.islower()
+        ]
+    elif level == 'Level 2 (Grade 4-6)':
+        # Medium 5-7 letter words
+        filtered_words = [
+            word for word in word_list 
+            if 5 <= len(word) <= 7 
+            and word.isalpha() 
+            and word.islower()
+        ]
+    elif level == 'Level 3 (Grade 7-10)':
+        # Advanced 7-10 letter words
+        filtered_words = [
+            word for word in word_list 
+            if 7 <= len(word) <= 10 
+            and word.isalpha() 
+            and word.islower()
+        ]
+    else:  # Level 4 (Grade 10-12)
+        # Complex 10+ letter words
+        filtered_words = [
+            word for word in word_list 
+            if len(word) >= 10 
+            and word.isalpha() 
+            and word.islower()
+        ]
     
-    # Level 3: School Grade 7-10 (Advanced 7-10 letter words)
-    level3_words = [
-        'knowledge', 'education', 'experience', 'technology', 'information', 'communication', 'environment', 'population', 'government', 'democracy',
-        'literature', 'mathematics', 'geography', 'biology', 'chemistry', 'physics', 'philosophy', 'psychology', 'sociology', 'economics',
-        'organization', 'development', 'achievement', 'opportunity', 'responsibility', 'independence', 'confidence', 'intelligence', 'creativity', 'imagination',
-        'community', 'society', 'tradition', 'ceremony', 'celebration', 'generation', 'revolution', 'evolution', 'discovery', 'invention',
-        'beautiful', 'wonderful', 'excellent', 'important', 'necessary', 'different', 'particular', 'separate', 'complete', 'continue'
-    ]
-    
-    # Level 4: School Grade 10-12 (Complex 8+ letter words)
-    level4_words = [
-        'architecture', 'extraordinary', 'sophisticated', 'comprehensive', 'contemporary', 'fundamental', 'revolutionary', 'unprecedented', 'characteristic', 'philosophical',
-        'psychological', 'technological', 'environmental', 'international', 'constitutional', 'mathematical', 'archaeological', 'astronomical', 'biological', 'geographical',
-        'responsibility', 'entrepreneurship', 'sustainability', 'globalization', 'infrastructure', 'transportation', 'communication', 'investigation', 'authentication', 'determination',
-        'accomplishment', 'establishment', 'implementation', 'transformation', 'interpretation', 'representation', 'pronunciation', 'participation', 'collaboration', 'demonstration',
-        'magnificent', 'extraordinary', 'intellectual', 'controversial', 'enthusiastic', 'spontaneous', 'simultaneous', 'anonymous', 'autonomous', 'synonymous'
-    ]
-    
-    level_map = {
-        'Level 1 (Grade 1-3)': level1_words,
-        'Level 2 (Grade 4-6)': level2_words,
-        'Level 3 (Grade 7-10)': level3_words,
-        'Level 4 (Grade 10-12)': level4_words
-    }
-    
-    return level_map.get(level, level1_words)
+    # Return random selection of filtered words
+    import random
+    if len(filtered_words) > 500:
+        return random.sample(filtered_words, 500)
+    return list(filtered_words)
 
 def quiz_tile(speech_rate=100):
     """Interactive pronunciation quiz tile."""
@@ -201,12 +200,74 @@ def quiz_tile(speech_rate=100):
         st.markdown("### 📚 Choose Word Source")
         word_source = st.radio(
             "Select word source:",
-            options=["Upload PDF", "System Generated"],
+            options=["Predefined Source", "Upload PDF", "System Generated"],
             key="word_source_radio",
             horizontal=True
         )
         
-        if word_source == "Upload PDF":
+        if word_source == "Predefined Source":
+            # Get PDF files from datasource folder
+            datasource_path = Path("datasource")
+            quiz_pdf = None
+            
+            if datasource_path.exists() and datasource_path.is_dir():
+                pdf_files = list(datasource_path.glob("*.pdf"))
+                
+                if pdf_files:
+                    # Create a dropdown with available PDFs
+                    pdf_names = [pdf.name for pdf in pdf_files]
+                    selected_pdf_name = st.selectbox(
+                        "Select a PDF from predefined sources:",
+                        options=pdf_names,
+                        key="predefined_pdf_select"
+                    )
+                    
+                    # Load button for predefined PDF
+                    if st.button("📥 Load Selected PDF", key="load_predefined_pdf_btn"):
+                        selected_pdf_path = datasource_path / selected_pdf_name
+                        
+                        try:
+                            reader = PyPDF2.PdfReader(str(selected_pdf_path))
+                            text = ""
+                            for page in reader.pages:
+                                page_text = page.extract_text()
+                                if page_text:
+                                    text += page_text + " "
+                            
+                            words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
+                            all_words = sorted(set(word.lower() for word in words if word))
+                            
+                            if not all_words:
+                                st.error("No valid words found in PDF.")
+                            else:
+                                # Store all words and select first 50 by default
+                                st.session_state.all_loaded_words = all_words
+                                st.session_state.quiz_words = all_words[:50] if len(all_words) > 50 else all_words
+                                st.session_state.word_source_type = "predefined"
+                                
+                                # Reset quiz state when new PDF is loaded
+                                st.session_state.used_quiz_words = []
+                                st.session_state.current_quiz_word = None
+                                st.session_state.quiz_score = 0
+                                st.session_state.quiz_total = 0
+                                st.session_state.answer_submitted = False
+                                st.session_state.wrong_attempts = []
+                                st.session_state.quiz_history = []
+                                st.session_state.last_pdf_name = selected_pdf_name
+                                
+                                st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from {selected_pdf_name}!")
+                                st.info("👇 Select word range below and click 'Get Random Word' to start!")
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Error reading PDF: {str(e)}")
+                else:
+                    st.warning("📂 No PDF files found in 'datasource' folder.")
+                    st.info("💡 Add PDF files to the 'datasource' folder to use predefined sources.")
+            else:
+                st.warning("📂 'datasource' folder not found.")
+                st.info("💡 Create a 'datasource' folder and add PDF files to use predefined sources.")
+                
+        elif word_source == "Upload PDF":
             # PDF uploader for quiz words
             quiz_pdf = st.file_uploader("Upload PDF for quiz words", type=["pdf"], key="quiz_pdf_uploader")
         else:
@@ -227,7 +288,9 @@ def quiz_tile(speech_rate=100):
             if st.button("📥 Load System Words", key="load_system_words_btn"):
                 system_words = get_system_generated_words(difficulty_level)
                 import random
-                st.session_state.quiz_words = random.sample(system_words, min(50, len(system_words)))
+                st.session_state.all_loaded_words = random.sample(system_words, min(500, len(system_words)))
+                st.session_state.quiz_words = st.session_state.all_loaded_words[:50]  # Default to first 50
+                st.session_state.word_source_type = "system"
                 
                 # Reset quiz state when new words are loaded
                 st.session_state.used_quiz_words = []
@@ -239,8 +302,8 @@ def quiz_tile(speech_rate=100):
                 st.session_state.quiz_history = []
                 st.session_state.last_pdf_name = None  # Clear PDF tracking
                 
-                st.success(f"✅ Loaded {len(st.session_state.quiz_words)} words from {difficulty_level}!")
-                st.info("👇 Click 'Get Random Word' below to start!")
+                st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from {difficulty_level}!")
+                st.info("👇 Select word range below and click 'Get Random Word' to start!")
                 st.rerun()
         
         # Check if PDF was just uploaded and needs processing
@@ -260,12 +323,10 @@ def quiz_tile(speech_rate=100):
                     st.error("No valid words found in PDF. Please upload a different PDF.")
                     return
                 
-                # Select up to 50 random words
-                import random
-                if len(all_words) > 50:
-                    st.session_state.quiz_words = random.sample(all_words, 50)
-                else:
-                    st.session_state.quiz_words = all_words
+                # Store all words and select first 50 by default
+                st.session_state.all_loaded_words = all_words
+                st.session_state.quiz_words = all_words[:50] if len(all_words) > 50 else all_words
+                st.session_state.word_source_type = "pdf"
                 
                 # Reset quiz state when new PDF is loaded
                 st.session_state.used_quiz_words = []
@@ -277,13 +338,118 @@ def quiz_tile(speech_rate=100):
                 st.session_state.quiz_history = []
                 st.session_state.last_pdf_name = quiz_pdf.name
                 
-                st.success(f"✅ Loaded {len(st.session_state.quiz_words)} words for quiz!")
-                st.info("👇 Click 'Get Random Word' below to start!")
+                st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from PDF!")
+                st.info("👇 Select word range below and click 'Get Random Word' to start!")
             except Exception as e:
                 st.error(f"Error reading PDF: {str(e)}")
                 return
         
         if st.session_state.quiz_words:
+            # Word range selector
+            if 'all_loaded_words' in st.session_state and len(st.session_state.all_loaded_words) > 0:
+                st.markdown("### 🎯 Select Word Range")
+                
+                total_words = len(st.session_state.all_loaded_words)
+                
+                # Create preset range buttons
+                col_range1, col_range2, col_range3, col_range4, col_range5 = st.columns(5)
+                
+                with col_range1:
+                    if st.button("📘 1-10", key="range_1_10", use_container_width=True):
+                        st.session_state.quiz_words = st.session_state.all_loaded_words[:10]
+                        st.session_state.used_quiz_words = []
+                        st.session_state.current_quiz_word = None
+                        st.session_state.quiz_score = 0
+                        st.session_state.quiz_total = 0
+                        st.session_state.answer_submitted = False
+                        st.session_state.quiz_history = []
+                        st.rerun()
+                
+                with col_range2:
+                    if st.button("📗 11-25", key="range_11_25", use_container_width=True):
+                        st.session_state.quiz_words = st.session_state.all_loaded_words[10:25]
+                        st.session_state.used_quiz_words = []
+                        st.session_state.current_quiz_word = None
+                        st.session_state.quiz_score = 0
+                        st.session_state.quiz_total = 0
+                        st.session_state.answer_submitted = False
+                        st.session_state.quiz_history = []
+                        st.rerun()
+                
+                with col_range3:
+                    if st.button("📙 26-50", key="range_26_50", use_container_width=True):
+                        st.session_state.quiz_words = st.session_state.all_loaded_words[25:50]
+                        st.session_state.used_quiz_words = []
+                        st.session_state.current_quiz_word = None
+                        st.session_state.quiz_score = 0
+                        st.session_state.quiz_total = 0
+                        st.session_state.answer_submitted = False
+                        st.session_state.quiz_history = []
+                        st.rerun()
+                
+                with col_range4:
+                    if st.button("📕 51-100", key="range_51_100", use_container_width=True):
+                        st.session_state.quiz_words = st.session_state.all_loaded_words[50:100]
+                        st.session_state.used_quiz_words = []
+                        st.session_state.current_quiz_word = None
+                        st.session_state.quiz_score = 0
+                        st.session_state.quiz_total = 0
+                        st.session_state.answer_submitted = False
+                        st.session_state.quiz_history = []
+                        st.rerun()
+                
+                with col_range5:
+                    if st.button("📚 All Words", key="range_all", use_container_width=True):
+                        st.session_state.quiz_words = st.session_state.all_loaded_words
+                        st.session_state.used_quiz_words = []
+                        st.session_state.current_quiz_word = None
+                        st.session_state.quiz_score = 0
+                        st.session_state.quiz_total = 0
+                        st.session_state.answer_submitted = False
+                        st.session_state.quiz_history = []
+                        st.rerun()
+                
+                # Custom range selector
+                st.markdown("**Or select custom range:**")
+                col_custom1, col_custom2, col_custom3 = st.columns([2, 2, 1])
+                
+                with col_custom1:
+                    start_range = st.number_input(
+                        "Start word #", 
+                        min_value=1, 
+                        max_value=total_words, 
+                        value=1,
+                        key="start_range_input"
+                    )
+                
+                with col_custom2:
+                    end_range = st.number_input(
+                        "End word #", 
+                        min_value=1, 
+                        max_value=total_words, 
+                        value=min(50, total_words),
+                        key="end_range_input"
+                    )
+                
+                with col_custom3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("✅ Apply", key="apply_custom_range", use_container_width=True):
+                        if start_range <= end_range:
+                            st.session_state.quiz_words = st.session_state.all_loaded_words[start_range-1:end_range]
+                            st.session_state.used_quiz_words = []
+                            st.session_state.current_quiz_word = None
+                            st.session_state.quiz_score = 0
+                            st.session_state.quiz_total = 0
+                            st.session_state.answer_submitted = False
+                            st.session_state.quiz_history = []
+                            st.success(f"✅ Selected words {start_range} to {end_range} ({end_range - start_range + 1} words)")
+                            st.rerun()
+                        else:
+                            st.error("Start word must be less than or equal to end word!")
+                
+                st.info(f"📊 Currently practicing: **{len(st.session_state.quiz_words)} words** from total **{total_words} words**")
+                st.markdown("---")
+            
             # Display score
             remaining = len(st.session_state.quiz_words) - len(st.session_state.used_quiz_words)
             col_score1, col_score2, col_score3 = st.columns(3)
@@ -303,13 +469,22 @@ def quiz_tile(speech_rate=100):
             if st.session_state.quiz_history:
                 st.markdown("### 📊 Performance Tracker")
                 
-                # Create visual progress bar with emojis
+                # Create visual progress bar with emojis and word details
                 history_display = ""
                 for idx, result in enumerate(st.session_state.quiz_history, 1):
-                    if result == 1:
-                        history_display += "✅ "
+                    # Get the word for this question
+                    word_idx = idx - 1
+                    if word_idx < len(st.session_state.used_quiz_words):
+                        word = st.session_state.used_quiz_words[word_idx]
+                        if result == 1:
+                            history_display += f'<span style="color: #10b981; font-weight: 600;" title="✅ {word}">✅</span> '
+                        else:
+                            history_display += f'<span style="color: #ef4444; font-weight: 600;" title="❌ {word}">❌</span> '
                     else:
-                        history_display += "❌ "
+                        if result == 1:
+                            history_display += "✅ "
+                        else:
+                            history_display += "❌ "
                     
                     # Add line break every 10 results
                     if idx % 10 == 0:
@@ -325,8 +500,22 @@ def quiz_tile(speech_rate=100):
                     <p style='margin: 0; color: #0c4a6e; font-size: 1.2em; line-height: 1.8;'>
                         {history_display}
                     </p>
+                    <p style='margin: 0.5em 0 0 0; color: #64748b; font-size: 0.85em; font-style: italic;'>
+                        💡 Hover over each emoji to see the word
+                    </p>
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # Show detailed list in expander
+                with st.expander("📋 View Detailed Performance", expanded=False):
+                    for idx, result in enumerate(st.session_state.quiz_history, 1):
+                        word_idx = idx - 1
+                        if word_idx < len(st.session_state.used_quiz_words):
+                            word = st.session_state.used_quiz_words[word_idx]
+                            if result == 1:
+                                st.markdown(f"**{idx}.** ✅ **{word.upper()}** - Correct")
+                            else:
+                                st.markdown(f"**{idx}.** ❌ **{word.upper()}** - Wrong")
                 
                 # Show streak information
                 if st.session_state.quiz_history:
