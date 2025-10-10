@@ -9,6 +9,8 @@ import os
 import nltk
 import re
 from pathlib import Path
+from nltk.corpus import wordnet
+from pkg_resources import resource_stream
 
 # Page Configuration
 st.set_page_config(
@@ -53,6 +55,75 @@ def load_word_list():
         nltk.download('words', quiet=True)
     from nltk.corpus import words as nltk_words
     return set(w.lower() for w in nltk_words.words())
+
+@st.cache_resource
+def load_wordnet():
+    """Load WordNet data once."""
+    try:
+        nltk.data.find('corpora/wordnet')
+    except LookupError:
+        nltk.download('wordnet', quiet=True)
+        nltk.download('omw-1.4', quiet=True)
+    return True
+
+@st.cache_data
+def get_word_info(word):
+    """Get word definition, synonyms, and antonyms using WordNet."""
+    load_wordnet()
+    
+    try:
+        synsets = wordnet.synsets(word.lower())
+        
+        if not synsets:
+            return {
+                'meaning': None,
+                'synonym': [],
+                'antonym': []
+            }
+        
+        # Get definitions grouped by part of speech
+        meanings = {}
+        all_synonyms = set()
+        all_antonyms = set()
+        
+        for synset in synsets:
+            # Get part of speech
+            pos = synset.pos()
+            pos_name = {
+                'n': 'Noun',
+                'v': 'Verb',
+                'a': 'Adjective',
+                's': 'Adjective Satellite',
+                'r': 'Adverb'
+            }.get(pos, 'Other')
+            
+            # Add definition
+            if pos_name not in meanings:
+                meanings[pos_name] = []
+            meanings[pos_name].append(synset.definition())
+            
+            # Get synonyms (lemmas)
+            for lemma in synset.lemmas():
+                synonym = lemma.name().replace('_', ' ')
+                if synonym.lower() != word.lower():
+                    all_synonyms.add(synonym)
+                
+                # Get antonyms
+                for antonym in lemma.antonyms():
+                    all_antonyms.add(antonym.name().replace('_', ' '))
+        
+        return {
+            'meaning': meanings if meanings else None,
+            'synonym': list(all_synonyms),
+            'antonym': list(all_antonyms)
+        }
+    except Exception as e:
+        return {
+            'meaning': None,
+            'synonym': [],
+            'antonym': [],
+            'error': str(e)
+        }
 
 def get_system_generated_words(level):
     """Get system generated words based on difficulty level."""
@@ -123,6 +194,8 @@ def quiz_tile(speech_rate=100):
             st.session_state.answer_submitted = False
         if 'wrong_attempts' not in st.session_state:
             st.session_state.wrong_attempts = []  # Track wrong spelling attempts
+        if 'quiz_history' not in st.session_state:
+            st.session_state.quiz_history = []  # Track performance history (1 for correct, 0 for wrong)
         
         # Word source selection
         st.markdown("### 📚 Choose Word Source")
@@ -163,6 +236,7 @@ def quiz_tile(speech_rate=100):
                 st.session_state.quiz_total = 0
                 st.session_state.answer_submitted = False
                 st.session_state.wrong_attempts = []
+                st.session_state.quiz_history = []
                 st.session_state.last_pdf_name = None  # Clear PDF tracking
                 
                 st.success(f"✅ Loaded {len(st.session_state.quiz_words)} words from {difficulty_level}!")
@@ -200,6 +274,7 @@ def quiz_tile(speech_rate=100):
                 st.session_state.quiz_total = 0
                 st.session_state.answer_submitted = False
                 st.session_state.wrong_attempts = []
+                st.session_state.quiz_history = []
                 st.session_state.last_pdf_name = quiz_pdf.name
                 
                 st.success(f"✅ Loaded {len(st.session_state.quiz_words)} words for quiz!")
@@ -223,6 +298,56 @@ def quiz_tile(speech_rate=100):
                     st.metric("Accuracy", "0%")
             with col_score3:
                 st.metric("Remaining Words", remaining)
+            
+            # Performance Visualization
+            if st.session_state.quiz_history:
+                st.markdown("### 📊 Performance Tracker")
+                
+                # Create visual progress bar with emojis
+                history_display = ""
+                for idx, result in enumerate(st.session_state.quiz_history, 1):
+                    if result == 1:
+                        history_display += "✅ "
+                    else:
+                        history_display += "❌ "
+                    
+                    # Add line break every 10 results
+                    if idx % 10 == 0:
+                        history_display += "<br>"
+                
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
+                            padding: 1em; 
+                            border-radius: 10px; 
+                            border-left: 4px solid #0ea5e9; 
+                            margin: 1em 0;
+                            text-align: center;'>
+                    <p style='margin: 0; color: #0c4a6e; font-size: 1.2em; line-height: 1.8;'>
+                        {history_display}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Show streak information
+                if st.session_state.quiz_history:
+                    current_streak = 0
+                    max_streak = 0
+                    temp_streak = 0
+                    
+                    for result in reversed(st.session_state.quiz_history):
+                        if result == 1:
+                            if current_streak == temp_streak:
+                                current_streak += 1
+                            temp_streak += 1
+                            max_streak = max(max_streak, temp_streak)
+                        else:
+                            temp_streak = 0
+                    
+                    col_streak1, col_streak2 = st.columns(2)
+                    with col_streak1:
+                        st.metric("🔥 Current Streak", f"{current_streak}")
+                    with col_streak2:
+                        st.metric("⭐ Best Streak", f"{max_streak}")
             
             # Show status message
             if st.session_state.current_quiz_word is None:
@@ -262,6 +387,7 @@ def quiz_tile(speech_rate=100):
                             st.session_state.quiz_score = 0
                             st.session_state.quiz_total = 0
                             st.session_state.answer_submitted = False
+                            st.session_state.quiz_history = []
                             st.rerun()
                 else:
                     st.warning("Please upload a PDF first to load quiz words.")
@@ -288,6 +414,37 @@ def quiz_tile(speech_rate=100):
                 st.markdown("---")
                 st.info("🎧 Listen to the pronunciation and spell the word below:")
                 st.success(f"✓ Word selected! ({len(st.session_state.current_quiz_word)} letters)")
+                
+                # Add Hint Button
+                if not st.session_state.answer_submitted:
+                    if st.button("💡 Get Hint", key="hint_btn"):
+                        word_info = get_word_info(st.session_state.current_quiz_word)
+                        
+                        with st.expander("📖 Word Hints", expanded=True):
+                            st.markdown(f"### Hints for the word ({len(st.session_state.current_quiz_word)} letters)")
+                            
+                            # Show definition
+                            if word_info['meaning']:
+                                st.markdown("#### 📚 Definition:")
+                                for part_of_speech, definitions in word_info['meaning'].items():
+                                    st.markdown(f"**{part_of_speech.capitalize()}:**")
+                                    for idx, definition in enumerate(definitions[:2], 1):  # Show first 2 definitions
+                                        st.write(f"{idx}. {definition}")
+                            else:
+                                st.warning("Definition not available for this word.")
+                            
+                            # Show synonyms
+                            if word_info['synonym']:
+                                st.markdown("#### 🔄 Synonyms:")
+                                synonyms_list = word_info['synonym'][:5]  # Show first 5 synonyms
+                                st.write(", ".join(synonyms_list))
+                            
+                            # Show antonyms
+                            if word_info['antonym']:
+                                st.markdown("#### ↔️ Antonyms:")
+                                antonyms_list = word_info['antonym'][:5]  # Show first 5 antonyms
+                                st.write(", ".join(antonyms_list))
+                
                 is_answer_submitted = bool(st.session_state.answer_submitted)
                 
                 # Create a form to allow Enter key submission
@@ -305,13 +462,43 @@ def quiz_tile(speech_rate=100):
                         
                         if user_answer.lower() == correct_word:
                             st.session_state.quiz_score += 1
-                            st.success(f"🎉 Correct! The word is: **{correct_word}**")
+                            st.session_state.quiz_history.append(1)  # Track correct answer
+                            
+                            # Animated success message
+                            st.markdown("""
+                            <div style='background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
+                                        padding: 2em; 
+                                        border-radius: 15px; 
+                                        border: 3px solid #10b981; 
+                                        margin: 1em 0;
+                                        text-align: center;
+                                        animation: successPulse 0.5s ease-in-out;'>
+                                <p style='margin: 0; font-size: 3em;'>🎉</p>
+                                <p style='margin: 0.5em 0 0 0; color: #065f46; font-size: 1.5em; font-weight: 800;'>
+                                    CORRECT!
+                                </p>
+                                <p style='margin: 0.3em 0 0 0; color: #047857; font-size: 1.2em; font-weight: 600;'>
+                                    The word is: {word}
+                                </p>
+                            </div>
+                            <style>
+                            @keyframes successPulse {{
+                                0% {{ transform: scale(0.8); opacity: 0; }}
+                                50% {{ transform: scale(1.05); }}
+                                100% {{ transform: scale(1); opacity: 1; }}
+                            }}
+                            </style>
+                            """.replace('{word}', correct_word.upper()), unsafe_allow_html=True)
+                            
                             phones = pronouncing.phones_for_word(correct_word)
                             if phones:
                                 st.markdown(f'<span class="pronunciation">Pronunciation (ARPAbet): {phones[0]}</span>', unsafe_allow_html=True)
+                            
+                            # Celebration animation for correct answer
                             st.balloons()
                         else:
                             similarity = difflib.SequenceMatcher(None, user_answer.lower(), correct_word).ratio()
+                            st.session_state.quiz_history.append(0)  # Track wrong answer
                             
                             # Track wrong attempt for revision
                             st.session_state.wrong_attempts.append({
@@ -320,7 +507,31 @@ def quiz_tile(speech_rate=100):
                                 'similarity': similarity * 100
                             })
                             
-                            st.error(f"❌ Incorrect! You spelled: **{user_answer}**")
+                            # Animated error message
+                            st.markdown(f"""
+                            <div style='background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); 
+                                        padding: 2em; 
+                                        border-radius: 15px; 
+                                        border: 3px solid #ef4444; 
+                                        margin: 1em 0;
+                                        text-align: center;
+                                        animation: shakeTilt 0.5s ease-in-out;'>
+                                <p style='margin: 0; font-size: 3em;'>❌</p>
+                                <p style='margin: 0.5em 0 0 0; color: #991b1b; font-size: 1.5em; font-weight: 800;'>
+                                    NOT QUITE!
+                                </p>
+                                <p style='margin: 0.3em 0 0 0; color: #b91c1c; font-size: 1em;'>
+                                    You spelled: <strong>{user_answer}</strong>
+                                </p>
+                            </div>
+                            <style>
+                            @keyframes shakeTilt {{
+                                0%, 100% {{ transform: translateX(0) rotate(0deg); }}
+                                25% {{ transform: translateX(-5px) rotate(-2deg); }}
+                                75% {{ transform: translateX(5px) rotate(2deg); }}
+                            }}
+                            </style>
+                            """, unsafe_allow_html=True)
                             
                             # Show correct spelling prominently
                             st.markdown(f"""
@@ -329,7 +540,8 @@ def quiz_tile(speech_rate=100):
                                         border-radius: 12px; 
                                         border-left: 5px solid #10b981; 
                                         margin: 1em 0;
-                                        text-align: center;'>
+                                        text-align: center;
+                                        animation: slideIn 0.5s ease-out;'>
                                 <p style='margin: 0; color: #065f46; font-size: 0.9em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;'>
                                     Correct Spelling
                                 </p>
@@ -337,7 +549,16 @@ def quiz_tile(speech_rate=100):
                                     {correct_word.upper()}
                                 </p>
                             </div>
+                            <style>
+                            @keyframes slideIn {{
+                                from {{ transform: translateY(-20px); opacity: 0; }}
+                                to {{ transform: translateY(0); opacity: 1; }}
+                            }}
+                            </style>
                             """, unsafe_allow_html=True)
+                            
+                            # Snow animation for wrong answer
+                            st.snow()
                             
                             st.info(f"📊 Similarity Score: **{similarity*100:.1f}%** - You were {similarity*100:.1f}% close!")
                             
@@ -352,8 +573,6 @@ def quiz_tile(speech_rate=100):
                                 st.info(f"💡 The word has {len(correct_word)} letters and you got most of them right.")
                             else:
                                 st.info(f"💡 Tip: The word starts with **'{correct_word[0].upper()}'** and has **{len(correct_word)} letters**.")
-                        
-                        st.rerun()
                     else:
                         st.warning("Please enter a word before checking.")
                 
