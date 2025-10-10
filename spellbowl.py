@@ -243,6 +243,10 @@ def quiz_tile(speech_rate=100):
         st.markdown('<div class="tile"><div class="tile-title">🎯 Pronunciation Quiz</div>', unsafe_allow_html=True)
         
         # Initialize session state
+        if 'student_name' not in st.session_state:
+            st.session_state.student_name = ""
+        if 'name_submitted' not in st.session_state:
+            st.session_state.name_submitted = False
         if 'quiz_words' not in st.session_state:
             st.session_state.quiz_words = []
         if 'used_quiz_words' not in st.session_state:
@@ -261,6 +265,71 @@ def quiz_tile(speech_rate=100):
             st.session_state.wrong_attempts = []  # Track wrong spelling attempts
         if 'quiz_history' not in st.session_state:
             st.session_state.quiz_history = []  # Track performance history (1 for correct, 0 for wrong)
+        
+        # Welcome and name input section
+        if not st.session_state.name_submitted:
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        padding: 2em; 
+                        border-radius: 15px; 
+                        margin: 1em 0;
+                        text-align: center;
+                        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);'>
+                <p style='margin: 0; font-size: 2.5em;'>👋</p>
+                <p style='margin: 0.5em 0 0 0; color: white; font-size: 1.8em; font-weight: 700;'>
+                    Welcome to SpellBowl!
+                </p>
+                <p style='margin: 0.3em 0 0 0; color: rgba(255,255,255,0.9); font-size: 1.1em;'>
+                    Let's start your pronunciation journey
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            with st.form(key="name_form"):
+                st.markdown("### 📝 Tell us about yourself")
+                student_name_input = st.text_input(
+                    "What's your name?",
+                    placeholder="Enter your name here...",
+                    key="student_name_input",
+                    help="This helps us personalize your learning experience!"
+                )
+                
+                col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                with col_btn2:
+                    submit_name = st.form_submit_button("🚀 Start Learning", use_container_width=True)
+                
+                if submit_name:
+                    if student_name_input and student_name_input.strip():
+                        st.session_state.student_name = student_name_input.strip()
+                        st.session_state.name_submitted = True
+                        st.success(f"🎉 Welcome, {st.session_state.student_name}! Let's begin!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Please enter your name to continue.")
+            
+            st.markdown("---")
+            st.info("💡 **Tip:** Enter your name above to start the quiz and track your progress!")
+            return  # Stop here until name is submitted
+        
+        # Show personalized greeting after name is submitted
+        col_greeting, col_change = st.columns([4, 1])
+        with col_greeting:
+            st.markdown(f"""
+            <div style='background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+                        padding: 1em; 
+                        border-radius: 10px; 
+                        margin-bottom: 1em;
+                        border-left: 5px solid #667eea;'>
+                <p style='margin: 0; color: #2a3b5d; font-size: 1.2em; font-weight: 600;'>
+                    👤 Hello, <strong>{st.session_state.student_name}</strong>! Ready to ace some words? 🌟
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_change:
+            if st.button("✏️ Change Name", key="change_name_btn", use_container_width=True):
+                st.session_state.name_submitted = False
+                st.session_state.student_name = ""
+                st.rerun()
         
         # Word source selection
         st.markdown("### 📚 Choose Word Source")
@@ -606,9 +675,9 @@ def quiz_tile(speech_rate=100):
             
             # Show status message
             if st.session_state.current_quiz_word is None:
-                st.info("👉 Click 'Get Random Word' to start!")
+                st.info(f"👉 {st.session_state.student_name}, click 'Get Random Word' to start!")
             elif not st.session_state.answer_submitted:
-                st.info("🎧 Listen and type your answer!")
+                st.info(f"🎧 {st.session_state.student_name}, listen carefully and type your answer!")
             
             col_a, col_b, col_c = st.columns([1, 1, 1])
             
@@ -635,7 +704,26 @@ def quiz_tile(speech_rate=100):
                             st.button("🎲 Get Random Word", key="random_word_btn", disabled=True)
                             st.caption("⚠️ Answer the current word first or skip it")
                     else:
-                        st.info("🎉 Quiz Complete!")
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%); 
+                                    padding: 2em; 
+                                    border-radius: 15px; 
+                                    text-align: center;
+                                    border: 3px solid #fdcb6e;
+                                    margin: 1em 0;'>
+                            <p style='margin: 0; font-size: 3em;'>🥳</p>
+                            <p style='margin: 0.5em 0 0 0; color: #2d3436; font-size: 1.8em; font-weight: 800;'>
+                                Congratulations, {st.session_state.student_name}!
+                            </p>
+                            <p style='margin: 0.3em 0 0 0; color: #2d3436; font-size: 1.2em;'>
+                                You've completed the quiz! 🌟
+                            </p>
+                            <p style='margin: 0.5em 0 0 0; color: #636e72; font-size: 1em;'>
+                                Final Score: {st.session_state.quiz_score}/{st.session_state.quiz_total}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
                         if st.button("🔄 Reset Quiz", key="reset_quiz_btn"):
                             st.session_state.used_quiz_words = []
                             st.session_state.current_quiz_word = None
@@ -668,7 +756,7 @@ def quiz_tile(speech_rate=100):
             # Show the quiz interface when a word is selected
             if st.session_state.current_quiz_word:
                 st.markdown("---")
-                st.info("🎧 Listen to the pronunciation and spell the word below:")
+                st.info(f"🎧 {st.session_state.student_name}, listen to the pronunciation and spell the word below:")
                 st.success(f"✓ Word selected! ({len(st.session_state.current_quiz_word)} letters)")
                 
                 # Add Hint Button
