@@ -23,28 +23,34 @@ st.set_page_config(
 
 def play_audio(text, rate=100):
     """Play text using Google TTS with specified speech rate."""
-    tts = gTTS(text=text, lang='en', slow=(rate < 80))
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-        temp_file = fp.name
-        tts.save(temp_file)
+    try:
+        tts = gTTS(text=text, lang='en', slow=(rate < 80))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+            temp_file = fp.name
+            tts.save(temp_file)
         
         # Display audio player with autoplay enabled
-        with open(temp_file, 'rb') as audio_file:
-            audio_bytes = audio_file.read()
-            st.audio(audio_bytes, format='audio/mp3', autoplay=True)
-        
-        # Also try system playback as fallback
         try:
-            os.system(f"ffplay -nodisp -autoexit {temp_file} >/dev/null 2>&1 &")
+            with open(temp_file, 'rb') as audio_file:
+                audio_bytes = audio_file.read()
+                st.audio(audio_bytes, format='audio/mp3', autoplay=True)
+        except Exception as audio_error:
+            st.warning(f"⚠️ Audio playback issue. Please check your browser settings allow audio autoplay.")
+        
+        # Schedule cleanup after a delay (async-like)
+        try:
+            import threading
+            threading.Timer(10.0, lambda: Path(temp_file).unlink(missing_ok=True)).start()
         except Exception:
-            pass
-    
-    # Schedule cleanup after a delay (async-like)
-    try:
-        import threading
-        threading.Timer(10.0, lambda: Path(temp_file).unlink(missing_ok=True)).start()
-    except Exception:
-        pass
+            # If threading fails, try immediate cleanup
+            try:
+                Path(temp_file).unlink(missing_ok=True)
+            except Exception:
+                pass
+                
+    except Exception as e:
+        st.error(f"❌ Error generating audio: {str(e)}")
+        st.info("💡 Tip: Check your internet connection and try again.")
 
 @st.cache_resource
 def load_word_list():
@@ -923,6 +929,24 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# Mobile audio notice
+with st.expander("📱 Using on Mobile? Read this!", expanded=False):
+    st.markdown("""
+    ### 🔊 Audio Settings for iPhone/iPad:
+    
+    **If audio is not playing automatically:**
+    1. **Unmute your device** - Check the mute switch on the side of your iPhone
+    2. **Turn up volume** - Use volume buttons to increase sound
+    3. **Tap the play button** - You may need to manually tap the audio player that appears
+    4. **Enable autoplay in Safari:**
+       - Go to Settings → Safari → Website Settings
+       - Find "Auto-Play" and set to "Allow All Auto-Play"
+    5. **Try Chrome or Firefox** - Sometimes works better than Safari on iOS
+    
+    **Note:** iOS devices may require user interaction before audio can play automatically. 
+    After clicking "Play Pronunciation", look for the audio player below and tap it if needed.
+    """)
 
 rate_slider = st.slider("Adjust speech rate (%)", min_value=30, max_value=150, value=100, step=10, key="speech_rate_slider")
 
