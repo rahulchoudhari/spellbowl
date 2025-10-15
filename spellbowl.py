@@ -265,6 +265,14 @@ def quiz_tile(speech_rate=100):
             st.session_state.wrong_attempts = []  # Track wrong spelling attempts
         if 'quiz_history' not in st.session_state:
             st.session_state.quiz_history = []  # Track performance history (1 for correct, 0 for wrong)
+        if 'competition_mode' not in st.session_state:
+            st.session_state.competition_mode = False
+        if 'timer_seconds' not in st.session_state:
+            st.session_state.timer_seconds = 30
+        if 'timer_start' not in st.session_state:
+            st.session_state.timer_start = None
+        if 'time_expired' not in st.session_state:
+            st.session_state.time_expired = False
         
         # Welcome and name input section
         if not st.session_state.name_submitted:
@@ -331,7 +339,39 @@ def quiz_tile(speech_rate=100):
                 st.session_state.student_name = ""
                 st.rerun()
         
+        # Competition Mode Settings
+        st.markdown("---")
+        st.markdown("### ⚡ Competition Mode")
+        
+        col_mode, col_timer = st.columns([2, 1])
+        
+        with col_mode:
+            competition_enabled = st.checkbox(
+                "🏆 Enable Competition Mode",
+                value=st.session_state.competition_mode,
+                key="competition_mode_checkbox",
+                help="In Competition Mode, you must answer each question within the time limit!"
+            )
+            st.session_state.competition_mode = competition_enabled
+            
+            if competition_enabled:
+                st.info("⏱️ **Competition Mode Active:** Answer each question before time runs out!")
+        
+        with col_timer:
+            if competition_enabled:
+                timer_seconds = st.number_input(
+                    "⏱️ Time per question (seconds)",
+                    min_value=5,
+                    max_value=120,
+                    value=st.session_state.timer_seconds,
+                    step=5,
+                    key="timer_input",
+                    help="Set how many seconds you have to answer each question"
+                )
+                st.session_state.timer_seconds = timer_seconds
+        
         # Word source selection
+        st.markdown("---")
         st.markdown("### 📚 Choose Word Source")
         word_source = st.radio(
             "Select word source:",
@@ -370,7 +410,9 @@ def quiz_tile(speech_rate=100):
                                     text += page_text + " "
                             
                             words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
-                            all_words = sorted(set(word.lower() for word in words if word))
+                            # Preserve original case and sort alphabetically (case-insensitive sort)
+                            unique_words = {word.lower(): word for word in words if word}
+                            all_words = [unique_words[key] for key in sorted(unique_words.keys())]
                             
                             if not all_words:
                                 st.error("No valid words found in PDF.")
@@ -452,7 +494,9 @@ def quiz_tile(speech_rate=100):
                         text += page_text + " "
                 
                 words = re.findall(r'\b[a-zA-Z]{4,}\b', text)  # Words with 4+ letters
-                all_words = sorted(set(word.lower() for word in words if word))
+                # Preserve original case and sort alphabetically (case-insensitive sort)
+                unique_words = {word.lower(): word for word in words if word}
+                all_words = [unique_words[key] for key in sorted(unique_words.keys())]
                 
                 if not all_words:
                     st.error("No valid words found in PDF. Please upload a different PDF.")
@@ -697,6 +741,9 @@ def quiz_tile(speech_rate=100):
                                 st.session_state.current_quiz_word = selected_word
                                 st.session_state.quiz_attempts = 0
                                 st.session_state.answer_submitted = False
+                                st.session_state.time_expired = False
+                                # Reset timer - will start when pronunciation is played
+                                st.session_state.timer_start = None
                                 # Debug: Show that word was selected
                                 st.toast(f"Word selected! Click 'Play Pronunciation' to hear it.", icon="✅")
                                 st.rerun()
@@ -740,6 +787,10 @@ def quiz_tile(speech_rate=100):
                     if st.button("🔊 Play Pronunciation", key="quiz_play_btn"):
                         with st.spinner("🎵 Generating audio... Please wait..."):
                             play_audio(st.session_state.current_quiz_word, rate=speech_rate)
+                        # Start timer after audio plays (only if competition mode and not already started)
+                        if st.session_state.competition_mode and st.session_state.timer_start is None and not st.session_state.answer_submitted:
+                            st.session_state.timer_start = time.time()
+                            st.rerun()
                 else:
                     st.button("🔊 Play Pronunciation", key="quiz_play_btn", disabled=True)
             
@@ -749,6 +800,8 @@ def quiz_tile(speech_rate=100):
                         if not st.session_state.answer_submitted:
                             st.session_state.used_quiz_words.append(st.session_state.current_quiz_word)
                             st.session_state.current_quiz_word = None
+                            st.session_state.timer_start = None
+                            st.session_state.time_expired = False
                             st.rerun()
                 else:
                     st.button("⏭️ Skip Word", key="skip_word_btn", disabled=True)
@@ -756,6 +809,91 @@ def quiz_tile(speech_rate=100):
             # Show the quiz interface when a word is selected
             if st.session_state.current_quiz_word:
                 st.markdown("---")
+                
+                # Competition Mode Timer Display or Waiting Message
+                if st.session_state.competition_mode and not st.session_state.answer_submitted:
+                    if st.session_state.timer_start is None:
+                        # Timer not started yet - waiting for audio to play
+                        st.markdown("""
+                        <div style='background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
+                                    padding: 1em; 
+                                    border-radius: 10px; 
+                                    border: 3px solid #f59e0b; 
+                                    margin: 1em 0;
+                                    text-align: center;'>
+                            <p style='margin: 0; color: #92400e; font-size: 1.2em; font-weight: 700;'>
+                                ⚡ Competition Mode Active
+                            </p>
+                            <p style='margin: 0.3em 0 0 0; color: #78350f; font-size: 0.9em;'>
+                                Click "Play Pronunciation" to start the timer!
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        # Timer is running
+                        elapsed_time = time.time() - st.session_state.timer_start
+                        remaining_time = max(0, st.session_state.timer_seconds - elapsed_time)
+                        
+                        if remaining_time > 0:
+                            # Calculate color based on remaining time
+                            time_percentage = (remaining_time / st.session_state.timer_seconds) * 100
+                            if time_percentage > 50:
+                                timer_color = "#10b981"  # Green
+                            elif time_percentage > 25:
+                                timer_color = "#f59e0b"  # Orange
+                            else:
+                                timer_color = "#ef4444"  # Red
+                            
+                            # Create placeholder for timer that will be updated
+                            timer_placeholder = st.empty()
+                            timer_placeholder.markdown(f"""
+                            <div style='background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
+                                        padding: 1em; 
+                                        border-radius: 10px; 
+                                        border: 3px solid {timer_color}; 
+                                        margin: 1em 0;
+                                        text-align: center;'>
+                                <p style='margin: 0; color: {timer_color}; font-size: 2.5em; font-weight: 800;'>
+                                    ⏱️ {int(remaining_time)}s
+                                </p>
+                                <p style='margin: 0.3em 0 0 0; color: #0c4a6e; font-size: 0.9em;'>
+                                    Time Remaining
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            # Time expired
+                            if not st.session_state.time_expired:
+                                st.session_state.time_expired = True
+                                st.session_state.answer_submitted = True
+                                st.session_state.quiz_total += 1
+                                st.session_state.quiz_history.append(0)
+                                st.session_state.used_quiz_words.append(st.session_state.current_quiz_word)
+                                
+                                st.session_state.wrong_attempts.append({
+                                    'correct': st.session_state.current_quiz_word,
+                                    'your_answer': '(Time Expired)',
+                                    'similarity': 0,
+                                    'error_type': 'timeout'
+                                })
+                            
+                            st.error("⏰ **TIME'S UP!** You ran out of time for this question.")
+                            st.markdown(f"""
+                            <div style='background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
+                                        padding: 1.5em; 
+                                        border-radius: 12px; 
+                                        border-left: 5px solid #10b981; 
+                                        margin: 1em 0;
+                                        text-align: center;'>
+                                <p style='margin: 0; color: #065f46; font-size: 0.9em; font-weight: 600; text-transform: uppercase;'>
+                                    The correct answer was:
+                                </p>
+                                <p style='margin: 0.3em 0 0 0; color: #047857; font-size: 2.5em; font-weight: 800;'>
+                                    {st.session_state.current_quiz_word}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
                 st.info(f"🎧 {st.session_state.student_name}, listen to the pronunciation and spell the word below:")
                 st.success(f"✓ Word selected! ({len(st.session_state.current_quiz_word)} letters)")
                 
@@ -804,7 +942,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.answer_submitted = True
                         st.session_state.used_quiz_words.append(correct_word)
                         
-                        if user_answer.lower() == correct_word:
+                        if user_answer == correct_word:
                             st.session_state.quiz_score += 1
                             st.session_state.quiz_history.append(1)  # Track correct answer
                             
@@ -841,14 +979,28 @@ def quiz_tile(speech_rate=100):
                             # Celebration animation for correct answer
                             st.balloons()
                         else:
-                            similarity = difflib.SequenceMatcher(None, user_answer.lower(), correct_word).ratio()
+                            similarity = difflib.SequenceMatcher(None, user_answer, correct_word).ratio()
                             st.session_state.quiz_history.append(0)  # Track wrong answer
+                            
+                            # Determine what went wrong: case or spelling or both
+                            case_mismatch = user_answer.lower() == correct_word.lower() and user_answer != correct_word
+                            spelling_wrong = user_answer.lower() != correct_word.lower()
+                            
+                            if case_mismatch:
+                                error_type = "❗ Case Sensitivity Error"
+                                error_detail = "Your spelling is correct, but the capitalization is wrong!"
+                                error_icon = "🔡"
+                            elif spelling_wrong:
+                                error_type = "❌ Spelling Error"
+                                error_detail = "The spelling is incorrect."
+                                error_icon = "❌"
                             
                             # Track wrong attempt for revision
                             st.session_state.wrong_attempts.append({
                                 'correct': correct_word,
                                 'your_answer': user_answer,
-                                'similarity': similarity * 100
+                                'similarity': similarity * 100,
+                                'error_type': 'case' if case_mismatch else 'spelling'
                             })
                             
                             # Animated error message
@@ -860,12 +1012,15 @@ def quiz_tile(speech_rate=100):
                                         margin: 1em 0;
                                         text-align: center;
                                         animation: shakeTilt 0.5s ease-in-out;'>
-                                <p style='margin: 0; font-size: 3em;'>❌</p>
+                                <p style='margin: 0; font-size: 3em;'>{error_icon}</p>
                                 <p style='margin: 0.5em 0 0 0; color: #991b1b; font-size: 1.5em; font-weight: 800;'>
-                                    NOT QUITE!
+                                    {error_type}
                                 </p>
                                 <p style='margin: 0.3em 0 0 0; color: #b91c1c; font-size: 1em;'>
-                                    You spelled: <strong>{user_answer}</strong>
+                                    {error_detail}
+                                </p>
+                                <p style='margin: 0.3em 0 0 0; color: #b91c1c; font-size: 1em;'>
+                                    You wrote: <strong>{user_answer}</strong>
                                 </p>
                             </div>
                             <style>
@@ -877,7 +1032,7 @@ def quiz_tile(speech_rate=100):
                             </style>
                             """, unsafe_allow_html=True)
                             
-                            # Show correct spelling prominently
+                            # Show correct spelling prominently with actual case
                             st.markdown(f"""
                             <div style='background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
                                         padding: 1.5em; 
@@ -890,7 +1045,7 @@ def quiz_tile(speech_rate=100):
                                     Correct Spelling
                                 </p>
                                 <p style='margin: 0.3em 0 0 0; color: #047857; font-size: 2.5em; font-weight: 800; letter-spacing: 0.02em;'>
-                                    {correct_word.upper()}
+                                    {correct_word}
                                 </p>
                             </div>
                             <style>
@@ -910,13 +1065,15 @@ def quiz_tile(speech_rate=100):
                             if phones:
                                 st.markdown(f'<span class="pronunciation">Pronunciation (ARPAbet): {phones[0]}</span>', unsafe_allow_html=True)
                             
-                            # Give hints based on similarity
-                            if similarity > 0.7:
+                            # Give hints based on error type and similarity
+                            if case_mismatch:
+                                st.warning(f"⚠️ **Case Sensitivity Tip:** Pay attention to which letters are uppercase and lowercase. The correct word is: **{correct_word}**")
+                            elif similarity > 0.7:
                                 st.info("💡 You're very close! Just a few letters off.")
                             elif similarity > 0.5:
                                 st.info(f"💡 The word has {len(correct_word)} letters and you got most of them right.")
                             else:
-                                st.info(f"💡 Tip: The word starts with **'{correct_word[0].upper()}'** and has **{len(correct_word)} letters**.")
+                                st.info(f"💡 Tip: The word starts with **'{correct_word[0]}'** and has **{len(correct_word)} letters**.")
                     else:
                         st.warning("Please enter a word before checking.")
                 
@@ -929,6 +1086,8 @@ def quiz_tile(speech_rate=100):
                         if st.button("➡️ Next Word", key="next_word_btn", use_container_width=True):
                             st.session_state.current_quiz_word = None
                             st.session_state.answer_submitted = False
+                            st.session_state.timer_start = None
+                            st.session_state.time_expired = False
                             st.rerun()
                     
                     with col_next2:
@@ -943,20 +1102,30 @@ def quiz_tile(speech_rate=100):
                 
                 with st.expander("View All Wrong Attempts", expanded=False):
                     for idx, attempt in enumerate(st.session_state.wrong_attempts, 1):
+                        if attempt.get('error_type') == 'timeout':
+                            error_badge = "⏰ Time Expired"
+                            border_color = "#ef4444"
+                        elif attempt.get('error_type') == 'case':
+                            error_badge = "🔡 Case Error"
+                            border_color = "#3b82f6"
+                        else:
+                            error_badge = "❌ Spelling Error"
+                            border_color = "#f59e0b"
+                        
                         st.markdown(f"""
                         <div style='background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
                                     padding: 1em; 
                                     border-radius: 10px; 
-                                    border-left: 4px solid #f59e0b; 
+                                    border-left: 4px solid {border_color}; 
                                     margin: 0.8em 0;'>
                             <p style='margin: 0; color: #92400e; font-size: 0.85em; font-weight: 600;'>
-                                #{idx} - Similarity: {attempt['similarity']:.1f}%
+                                #{idx} - {error_badge} - Similarity: {attempt['similarity']:.1f}%
                             </p>
                             <p style='margin: 0.3em 0 0 0; color: #b45309;'>
                                 <strong>Your Answer:</strong> <span style='text-decoration: line-through;'>{attempt['your_answer']}</span>
                             </p>
                             <p style='margin: 0.3em 0 0 0; color: #065f46; font-weight: 700;'>
-                                <strong>Correct:</strong> {attempt['correct'].upper()}
+                                <strong>Correct:</strong> {attempt['correct']}
                             </p>
                         </div>
                         """, unsafe_allow_html=True)
@@ -968,6 +1137,16 @@ def quiz_tile(speech_rate=100):
                 
                 if st.button("🗑️ Clear Revision List", key="clear_revision_btn"):
                     st.session_state.wrong_attempts = []
+                    st.rerun()
+            
+            # Auto-refresh for timer updates (only if timer is running and no answer submitted)
+            if (st.session_state.competition_mode and 
+                st.session_state.current_quiz_word and 
+                st.session_state.timer_start and 
+                not st.session_state.answer_submitted):
+                elapsed = time.time() - st.session_state.timer_start
+                if elapsed < st.session_state.timer_seconds:
+                    time.sleep(1)
                     st.rerun()
         else:
             st.info("📤 Upload a PDF to start the pronunciation quiz!")
