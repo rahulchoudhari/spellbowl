@@ -8,9 +8,12 @@ import time
 import os
 import nltk
 import re
+import random
+import threading
 from pathlib import Path
 from nltk.corpus import wordnet
 from pkg_resources import resource_stream
+from predefined_words import predefined_words
 
 # Page Configuration
 st.set_page_config(
@@ -380,69 +383,41 @@ def quiz_tile(speech_rate=100):
             horizontal=True
         )
         
+        # Initialize quiz_pdf to None
+        quiz_pdf = None
+        
         if word_source == "Predefined Source":
-            # Get PDF files from datasource folder
-            datasource_path = Path("datasource")
-            quiz_pdf = None
+            # Use predefined words array
+            st.info("📚 Using predefined word list with 750 curated words")
             
-            if datasource_path.exists() and datasource_path.is_dir():
-                pdf_files = list(datasource_path.glob("*.pdf"))
-                
-                if pdf_files:
-                    # Create a dropdown with available PDFs
-                    pdf_names = [pdf.name for pdf in pdf_files]
-                    selected_pdf_name = st.selectbox(
-                        "Select a PDF from predefined sources:",
-                        options=pdf_names,
-                        key="predefined_pdf_select"
-                    )
+            # Load button for predefined words
+            if st.button("📥 Load Predefined Words", key="load_predefined_words_btn"):
+                try:
+                    # Use the imported predefined_words array
+                    all_words = predefined_words.copy()
                     
-                    # Load button for predefined PDF
-                    if st.button("📥 Load Selected PDF", key="load_predefined_pdf_btn"):
-                        selected_pdf_path = datasource_path / selected_pdf_name
+                    if not all_words:
+                        st.error("No words found in predefined list.")
+                    else:
+                        # Store all words and select first 50 by default
+                        st.session_state.all_loaded_words = all_words
+                        st.session_state.quiz_words = all_words[:50] if len(all_words) > 50 else all_words
+                        st.session_state.word_source_type = "predefined"
                         
-                        try:
-                            reader = PyPDF2.PdfReader(str(selected_pdf_path))
-                            text = ""
-                            for page in reader.pages:
-                                page_text = page.extract_text()
-                                if page_text:
-                                    text += page_text + " "
-                            
-                            words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
-                            # Preserve original case and sort alphabetically (case-insensitive sort)
-                            unique_words = {word.lower(): word for word in words if word}
-                            all_words = [unique_words[key] for key in sorted(unique_words.keys())]
-                            
-                            if not all_words:
-                                st.error("No valid words found in PDF.")
-                            else:
-                                # Store all words and select first 50 by default
-                                st.session_state.all_loaded_words = all_words
-                                st.session_state.quiz_words = all_words[:50] if len(all_words) > 50 else all_words
-                                st.session_state.word_source_type = "predefined"
-                                
-                                # Reset quiz state when new PDF is loaded
-                                st.session_state.used_quiz_words = []
-                                st.session_state.current_quiz_word = None
-                                st.session_state.quiz_score = 0
-                                st.session_state.quiz_total = 0
-                                st.session_state.answer_submitted = False
-                                st.session_state.wrong_attempts = []
-                                st.session_state.quiz_history = []
-                                st.session_state.last_pdf_name = selected_pdf_name
-                                
-                                st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from {selected_pdf_name}!")
-                                st.info("👇 Select word range below and click 'Get Random Word' to start!")
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"Error reading PDF: {str(e)}")
-                else:
-                    st.warning("📂 No PDF files found in 'datasource' folder.")
-                    st.info("💡 Add PDF files to the 'datasource' folder to use predefined sources.")
-            else:
-                st.warning("📂 'datasource' folder not found.")
-                st.info("💡 Create a 'datasource' folder and add PDF files to use predefined sources.")
+                        # Reset quiz state when new words are loaded
+                        st.session_state.used_quiz_words = []
+                        st.session_state.current_quiz_word = None
+                        st.session_state.quiz_score = 0
+                        st.session_state.quiz_total = 0
+                        st.session_state.answer_submitted = False
+                        st.session_state.wrong_attempts = []
+                        st.session_state.quiz_history = []
+                        st.session_state.last_pdf_name = "predefined_list"
+                        
+                        st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from predefined list!")
+                        st.info("👇 Select word range below and click 'Get Random Word' to start!")
+                except Exception as e:
+                    st.error(f"Error loading predefined words: {str(e)}")
                 
         elif word_source == "Upload PDF":
             # PDF uploader for quiz words
@@ -493,13 +468,25 @@ def quiz_tile(speech_rate=100):
                     if page_text:
                         text += page_text + " "
                 
-                words = re.findall(r'\b[a-zA-Z]{4,}\b', text)  # Words with 4+ letters
-                # Preserve original case and sort alphabetically (case-insensitive sort)
-                unique_words = {word.lower(): word for word in words if word}
+                # Very simple and universal extraction - just look for words/phrases with letters
+                # Pattern matches: single words, hyphenated words, apostrophe words, and multi-word phrases
+                words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
+                
+                # Basic filtering: only length check
+                words = [w.strip() for w in words if len(w.strip()) >= 4]
+                
+                # Remove duplicates while preserving original case and sort alphabetically
+                unique_words = {}
+                for word in words:
+                    lower_word = word.lower()
+                    if lower_word not in unique_words:
+                        unique_words[lower_word] = word
+                
                 all_words = [unique_words[key] for key in sorted(unique_words.keys())]
                 
                 if not all_words:
                     st.error("No valid words found in PDF. Please upload a different PDF.")
+                    st.info("💡 Make sure your PDF contains readable text (not scanned images).")
                     return
                 
                 # Store all words and select first 50 by default
@@ -626,7 +613,13 @@ def quiz_tile(speech_rate=100):
                         else:
                             st.error("Start word must be less than or equal to end word!")
                 
-                st.info(f"📊 Currently practicing: **{len(st.session_state.quiz_words)} words** from total **{total_words} words**")
+                # Show current range details
+                if st.session_state.quiz_words and 'all_loaded_words' in st.session_state:
+                    first_word_idx = st.session_state.all_loaded_words.index(st.session_state.quiz_words[0]) + 1 if st.session_state.quiz_words else 0
+                    last_word_idx = st.session_state.all_loaded_words.index(st.session_state.quiz_words[-1]) + 1 if st.session_state.quiz_words else 0
+                    st.info(f"📊 Currently practicing: **{len(st.session_state.quiz_words)} words** (Word #{first_word_idx} to #{last_word_idx} from total **{total_words} words**)")
+                else:
+                    st.info(f"📊 Currently practicing: **{len(st.session_state.quiz_words)} words** from total **{total_words} words**")
                 st.markdown("---")
             
             # Display score
@@ -744,8 +737,16 @@ def quiz_tile(speech_rate=100):
                                 st.session_state.time_expired = False
                                 # Reset timer - will start when pronunciation is played
                                 st.session_state.timer_start = None
-                                # Debug: Show that word was selected
-                                st.toast(f"Word selected! Click 'Play Pronunciation' to hear it.", icon="✅")
+                                
+                                # Debug: Find the word position in original list
+                                if 'all_loaded_words' in st.session_state:
+                                    try:
+                                        word_position = st.session_state.all_loaded_words.index(selected_word) + 1
+                                        st.toast(f"Word #{word_position} selected from full list!", icon="✅")
+                                    except ValueError:
+                                        st.toast(f"Word selected! Click 'Play Pronunciation' to hear it.", icon="✅")
+                                else:
+                                    st.toast(f"Word selected! Click 'Play Pronunciation' to hear it.", icon="✅")
                                 st.rerun()
                         else:
                             st.button("🎲 Get Random Word", key="random_word_btn", disabled=True)
@@ -1331,4 +1332,3 @@ with tab4:
             else:
                 st.warning("Pronunciation not found for this word.")
         st.markdown('</div>', unsafe_allow_html=True)
-
