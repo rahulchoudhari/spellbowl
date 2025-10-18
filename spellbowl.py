@@ -10,6 +10,8 @@ import nltk
 import re
 import random
 import threading
+import json
+from datetime import datetime
 from pathlib import Path
 from nltk.corpus import wordnet
 from pkg_resources import resource_stream
@@ -20,9 +22,231 @@ st.set_page_config(
     page_title="SpellBowl - Master Pronunciation & Spelling",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
+# File paths
+LEADERBOARD_FILE = "leaderboard.json"
+USERS_FILE = "users.json"
+
+# User Management Functions
+def load_users():
+    """Load users data from JSON file."""
+    try:
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, 'r') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        st.error(f"Error loading users: {e}")
+        return {}
+
+def save_users(users):
+    """Save users data to JSON file."""
+    try:
+        with open(USERS_FILE, 'w') as f:
+            json.dump(users, f, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"Error saving users: {e}")
+        return False
+
+def register_user(username, password, full_name):
+    """Register a new user."""
+    users = load_users()
+    
+    if username.lower() in [u.lower() for u in users.keys()]:
+        return False, "Username already exists. Please choose another one."
+    
+    users[username] = {
+        'password': password,  # In production, use hashed passwords!
+        'full_name': full_name,
+        'created_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'total_quizzes': 0,
+        'best_score': 0
+    }
+    
+    if save_users(users):
+        return True, "Registration successful!"
+    return False, "Error during registration."
+
+def authenticate_user(username, password):
+    """Authenticate user login."""
+    users = load_users()
+    
+    if username in users and users[username]['password'] == password:
+        return True, users[username]['full_name']
+    return False, None
+
+def update_user_stats(username, accuracy):
+    """Update user statistics after quiz completion."""
+    users = load_users()
+    
+    if username in users:
+        users[username]['total_quizzes'] = users[username].get('total_quizzes', 0) + 1
+        users[username]['best_score'] = max(users[username].get('best_score', 0), accuracy)
+        save_users(users)
+
+def load_leaderboard():
+    """Load leaderboard data from JSON file."""
+    try:
+        if os.path.exists(LEADERBOARD_FILE):
+            with open(LEADERBOARD_FILE, 'r') as f:
+                data = json.load(f)
+                # Handle old format (list) and convert to new format (dict)
+                if isinstance(data, list):
+                    # Convert old list format to new dict format
+                    new_format = {}
+                    for entry in data:
+                        username = entry['name']
+                        if username not in new_format:
+                            new_format[username] = {
+                                'name': entry['name'],
+                                'total_score': entry['score'],
+                                'total_questions': entry['total'],
+                                'total_quizzes': 1,
+                                'best_accuracy': entry['accuracy'],
+                                'avg_accuracy': entry['accuracy'],
+                                'last_quiz_date': entry.get('timestamp', entry.get('date', '')),
+                                'quiz_history': [{
+                                    'score': entry['score'],
+                                    'total': entry['total'],
+                                    'accuracy': entry['accuracy'],
+                                    'timestamp': entry.get('timestamp', ''),
+                                    'word_source': entry.get('word_source', 'unknown')
+                                }]
+                            }
+                        else:
+                            # Aggregate multiple entries for same user
+                            new_format[username]['total_score'] += entry['score']
+                            new_format[username]['total_questions'] += entry['total']
+                            new_format[username]['total_quizzes'] += 1
+                            new_format[username]['best_accuracy'] = max(new_format[username]['best_accuracy'], entry['accuracy'])
+                            new_format[username]['last_quiz_date'] = entry.get('timestamp', entry.get('date', ''))
+                            new_format[username]['quiz_history'].append({
+                                'score': entry['score'],
+                                'total': entry['total'],
+                                'accuracy': entry['accuracy'],
+                                'timestamp': entry.get('timestamp', ''),
+                                'word_source': entry.get('word_source', 'unknown')
+                            })
+                            # Recalculate average accuracy
+                            total_acc = sum(q['accuracy'] for q in new_format[username]['quiz_history'])
+                            new_format[username]['avg_accuracy'] = round(total_acc / len(new_format[username]['quiz_history']), 1)
+                    return new_format
+                return data
+        return {}
+    except Exception as e:
+        st.error(f"Error loading leaderboard: {e}")
+        return {}
+
+def save_to_leaderboard(name, score, total, accuracy, word_source, total_words):
+    """Save a quiz result to the leaderboard - updates existing user or creates new entry."""
+    try:
+        leaderboard = load_leaderboard()
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        quiz_entry = {
+            'score': score,
+            'total': total,
+            'accuracy': accuracy,
+            'timestamp': timestamp,
+            'word_source': word_source
+        }
+        
+        if name in leaderboard:
+            # Update existing user
+            leaderboard[name]['total_score'] += score
+            leaderboard[name]['total_questions'] += total
+            leaderboard[name]['total_quizzes'] += 1
+            leaderboard[name]['best_accuracy'] = max(leaderboard[name]['best_accuracy'], accuracy)
+            leaderboard[name]['last_quiz_date'] = timestamp
+            leaderboard[name]['quiz_history'].append(quiz_entry)
+            
+            # Recalculate average accuracy
+            total_acc = sum(q['accuracy'] for q in leaderboard[name]['quiz_history'])
+            leaderboard[name]['avg_accuracy'] = round(total_acc / len(leaderboard[name]['quiz_history']), 1)
+        else:
+            # Create new user entry
+            leaderboard[name] = {
+                'name': name,
+                'total_score': score,
+                'total_questions': total,
+                'total_quizzes': 1,
+                'best_accuracy': accuracy,
+                'avg_accuracy': accuracy,
+                'last_quiz_date': timestamp,
+                'quiz_history': [quiz_entry]
+            }
+        
+        with open(LEADERBOARD_FILE, 'w') as f:
+            json.dump(leaderboard, f, indent=2)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error saving to leaderboard: {e}")
+        return False
+
+def get_top_scores(limit=10):
+    """Get top scores from leaderboard sorted by best accuracy."""
+    leaderboard = load_leaderboard()
+    # Convert dict to list and sort by best accuracy (descending), then by total score
+    leaderboard_list = list(leaderboard.values())
+    sorted_board = sorted(leaderboard_list, key=lambda x: (x['best_accuracy'], x['total_score']), reverse=True)
+    return sorted_board[:limit]
+
+def get_user_scores(name, limit=5):
+    """Get recent quiz history for a specific user."""
+    leaderboard = load_leaderboard()
+    if name in leaderboard:
+        user_data = leaderboard[name]
+        # Return most recent quizzes (reversed to show newest first)
+        recent_quizzes = user_data['quiz_history'][-limit:][::-1]
+        return user_data, recent_quizzes
+    return None, []
+
+def sidebar_leaderboard():
+    """Display leaderboard in sidebar."""
+    with st.sidebar:
+        st.markdown("### 🏆 Leaderboard")
+        st.markdown("---")
+        
+        # Get top 5 scores for sidebar
+        top_scores = get_top_scores(5)
+        
+        if top_scores:
+            for idx, entry in enumerate(top_scores, 1):
+                if idx == 1:
+                    medal = "🥇"
+                elif idx == 2:
+                    medal = "🥈"
+                elif idx == 3:
+                    medal = "🥉"
+                else:
+                    medal = f"#{idx}"
+                
+                st.markdown(f"""
+                <div style='background: #f8f9fa; 
+                            padding: 0.5em; 
+                            border-radius: 8px; 
+                            margin: 0.3em 0;
+                            border-left: 3px solid #667eea;'>
+                    <p style='margin: 0; font-size: 0.9em; font-weight: 600; color: #2a3b5d;'>
+                        {medal} {entry['name']}
+                    </p>
+                    <p style='margin: 0.2em 0 0 0; font-size: 0.75em; color: #636e72;'>
+                        Best: {entry['best_accuracy']}% | Avg: {entry['avg_accuracy']}%
+                    </p>
+                    <p style='margin: 0.2em 0 0 0; font-size: 0.7em; color: #95a5a6;'>
+                        {entry['total_quizzes']} quiz(es) | {entry['total_score']}/{entry['total_questions']}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("🎯 No scores yet!")
+        
+        st.markdown("---")
 
 def play_audio(text, rate=100):
     """Play text using Google TTS with specified speech rate."""
@@ -277,7 +501,7 @@ def quiz_tile(speech_rate=100):
         if 'time_expired' not in st.session_state:
             st.session_state.time_expired = False
         
-        # Welcome and name input section
+        # Login/Registration section
         if not st.session_state.name_submitted:
             st.markdown("""
             <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -291,40 +515,138 @@ def quiz_tile(speech_rate=100):
                     Welcome to SpellBowl!
                 </p>
                 <p style='margin: 0.3em 0 0 0; color: rgba(255,255,255,0.9); font-size: 1.1em;'>
-                    Let's start your pronunciation journey
+                    Login or Register to start your pronunciation journey
                 </p>
             </div>
             """, unsafe_allow_html=True)
             
-            with st.form(key="name_form"):
-                st.markdown("### 📝 Tell us about yourself")
-                student_name_input = st.text_input(
-                    "What's your name?",
-                    placeholder="Enter your name here...",
-                    key="student_name_input",
-                    help="This helps us personalize your learning experience!"
-                )
-                
-                col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-                with col_btn2:
-                    submit_name = st.form_submit_button("🚀 Start Learning", use_container_width=True)
-                
-                if submit_name:
-                    if student_name_input and student_name_input.strip():
-                        st.session_state.student_name = student_name_input.strip()
-                        st.session_state.name_submitted = True
-                        st.success(f"🎉 Welcome, {st.session_state.student_name}! Let's begin!")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ Please enter your name to continue.")
+            # Initialize auth mode in session state
+            if 'auth_mode' not in st.session_state:
+                st.session_state.auth_mode = 'login'
+            
+            # Toggle between login and register
+            col_tab1, col_tab2 = st.columns(2)
+            with col_tab1:
+                if st.button("🔑 Login", use_container_width=True, type="primary" if st.session_state.auth_mode == 'login' else "secondary"):
+                    st.session_state.auth_mode = 'login'
+                    st.rerun()
+            with col_tab2:
+                if st.button("📝 Register", use_container_width=True, type="primary" if st.session_state.auth_mode == 'register' else "secondary"):
+                    st.session_state.auth_mode = 'register'
+                    st.rerun()
             
             st.markdown("---")
-            st.info("💡 **Tip:** Enter your name above to start the quiz and track your progress!")
-            return  # Stop here until name is submitted
+            
+            # Login Form
+            if st.session_state.auth_mode == 'login':
+                with st.form(key="login_form"):
+                    st.markdown("### 🔑 Login to Your Account")
+                    
+                    username = st.text_input(
+                        "Username",
+                        placeholder="Enter your username",
+                        key="login_username"
+                    )
+                    
+                    password = st.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Enter your password",
+                        key="login_password"
+                    )
+                    
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                    with col_btn2:
+                        login_button = st.form_submit_button("🚀 Login", use_container_width=True)
+                    
+                    if login_button:
+                        if username and password:
+                            success, full_name = authenticate_user(username, password)
+                            if success:
+                                st.session_state.student_name = full_name
+                                st.session_state.username = username
+                                st.session_state.name_submitted = True
+                                
+                                # Get user stats
+                                users = load_users()
+                                user_data = users.get(username, {})
+                                st.success(f"🎉 Welcome back, {full_name}! 🌟")
+                                st.info(f"📊 Your Stats: {user_data.get('total_quizzes', 0)} quiz(es) completed | Best Score: {user_data.get('best_score', 0)}%")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("❌ Invalid username or password. Please try again.")
+                        else:
+                            st.warning("⚠️ Please enter both username and password.")
+            
+            # Registration Form
+            else:
+                with st.form(key="register_form"):
+                    st.markdown("### 📝 Create New Account")
+                    
+                    full_name = st.text_input(
+                        "Full Name",
+                        placeholder="Enter your full name",
+                        key="register_fullname"
+                    )
+                    
+                    username = st.text_input(
+                        "Username",
+                        placeholder="Choose a unique username",
+                        key="register_username",
+                        help="Username must be unique"
+                    )
+                    
+                    password = st.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Choose a strong password",
+                        key="register_password",
+                        help="Minimum 4 characters recommended"
+                    )
+                    
+                    confirm_password = st.text_input(
+                        "Confirm Password",
+                        type="password",
+                        placeholder="Re-enter your password",
+                        key="register_confirm_password"
+                    )
+                    
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                    with col_btn2:
+                        register_button = st.form_submit_button("✨ Create Account", use_container_width=True)
+                    
+                    if register_button:
+                        if full_name and username and password and confirm_password:
+                            if password != confirm_password:
+                                st.error("❌ Passwords do not match!")
+                            elif len(password) < 4:
+                                st.error("❌ Password must be at least 4 characters long!")
+                            elif len(username) < 3:
+                                st.error("❌ Username must be at least 3 characters long!")
+                            else:
+                                success, message = register_user(username, password, full_name)
+                                if success:
+                                    st.success(f"✅ {message} You can now login!")
+                                    st.balloons()
+                                    time.sleep(2)
+                                    st.session_state.auth_mode = 'login'
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {message}")
+                        else:
+                            st.warning("⚠️ Please fill in all fields.")
+            
+            st.markdown("---")
+            st.info("💡 **Tip:** Login or register above to start the quiz and track your progress!")
+            return  # Stop here until logged in
         
-        # Show personalized greeting after name is submitted
-        col_greeting, col_change = st.columns([4, 1])
+        # Show personalized greeting after login
+        col_greeting, col_logout = st.columns([4, 1])
         with col_greeting:
+            users = load_users()
+            username = st.session_state.get('username', '')
+            user_data = users.get(username, {})
             st.markdown(f"""
             <div style='background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
                         padding: 1em; 
@@ -332,14 +654,21 @@ def quiz_tile(speech_rate=100):
                         margin-bottom: 1em;
                         border-left: 5px solid #667eea;'>
                 <p style='margin: 0; color: #2a3b5d; font-size: 1.2em; font-weight: 600;'>
-                    👤 Hello, <strong>{st.session_state.student_name}</strong>! Ready to ace some words? 🌟
+                    👤 Hello, <strong>{st.session_state.student_name}</strong>! (@{username})
+                </p>
+                <p style='margin: 0.3em 0 0 0; color: #636e72; font-size: 0.9em;'>
+                    📊 {user_data.get('total_quizzes', 0)} quizzes | ⭐ Best: {user_data.get('best_score', 0)}%
                 </p>
             </div>
             """, unsafe_allow_html=True)
-        with col_change:
-            if st.button("✏️ Change Name", key="change_name_btn", use_container_width=True):
+        with col_logout:
+            if st.button("🚪 Logout", key="logout_btn", use_container_width=True):
                 st.session_state.name_submitted = False
                 st.session_state.student_name = ""
+                st.session_state.username = ""
+                st.session_state.auth_mode = 'login'
+                st.success("👋 Logged out successfully!")
+                time.sleep(1)
                 st.rerun()
         
         # Competition Mode Settings
@@ -412,6 +741,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.answer_submitted = False
                         st.session_state.wrong_attempts = []
                         st.session_state.quiz_history = []
+                        st.session_state.leaderboard_saved = False
                         st.session_state.last_pdf_name = "predefined_list"
                         
                         st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from predefined list!")
@@ -453,6 +783,7 @@ def quiz_tile(speech_rate=100):
                 st.session_state.wrong_attempts = []
                 st.session_state.quiz_history = []
                 st.session_state.last_pdf_name = None  # Clear PDF tracking
+                st.session_state.leaderboard_saved = False
                 
                 st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from {difficulty_level}!")
                 st.info("👇 Select word range below and click 'Get Random Word' to start!")
@@ -503,6 +834,7 @@ def quiz_tile(speech_rate=100):
                 st.session_state.wrong_attempts = []
                 st.session_state.quiz_history = []
                 st.session_state.last_pdf_name = quiz_pdf.name
+                st.session_state.leaderboard_saved = False
                 
                 st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from PDF!")
                 st.info("👇 Select word range below and click 'Get Random Word' to start!")
@@ -529,6 +861,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.quiz_total = 0
                         st.session_state.answer_submitted = False
                         st.session_state.quiz_history = []
+                        st.session_state.leaderboard_saved = False
                         st.rerun()
                 
                 with col_range2:
@@ -540,6 +873,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.quiz_total = 0
                         st.session_state.answer_submitted = False
                         st.session_state.quiz_history = []
+                        st.session_state.leaderboard_saved = False
                         st.rerun()
                 
                 with col_range3:
@@ -551,6 +885,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.quiz_total = 0
                         st.session_state.answer_submitted = False
                         st.session_state.quiz_history = []
+                        st.session_state.leaderboard_saved = False
                         st.rerun()
                 
                 with col_range4:
@@ -562,6 +897,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.quiz_total = 0
                         st.session_state.answer_submitted = False
                         st.session_state.quiz_history = []
+                        st.session_state.leaderboard_saved = False
                         st.rerun()
                 
                 with col_range5:
@@ -573,6 +909,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.quiz_total = 0
                         st.session_state.answer_submitted = False
                         st.session_state.quiz_history = []
+                        st.session_state.leaderboard_saved = False
                         st.rerun()
                 
                 # Custom range selector
@@ -608,6 +945,7 @@ def quiz_tile(speech_rate=100):
                             st.session_state.quiz_total = 0
                             st.session_state.answer_submitted = False
                             st.session_state.quiz_history = []
+                            st.session_state.leaderboard_saved = False
                             st.success(f"✅ Selected words {start_range} to {end_range} ({end_range - start_range + 1} words)")
                             st.rerun()
                         else:
@@ -752,6 +1090,27 @@ def quiz_tile(speech_rate=100):
                             st.button("🎲 Get Random Word", key="random_word_btn", disabled=True)
                             st.caption("⚠️ Answer the current word first or skip it")
                     else:
+                        # Quiz completed - save to leaderboard
+                        final_accuracy = (st.session_state.quiz_score / st.session_state.quiz_total * 100) if st.session_state.quiz_total > 0 else 0
+                        
+                        # Save to leaderboard if not already saved
+                        if 'leaderboard_saved' not in st.session_state or not st.session_state.leaderboard_saved:
+                            word_source = st.session_state.get('word_source_type', 'unknown')
+                            total_words = len(st.session_state.get('all_loaded_words', []))
+                            
+                            if save_to_leaderboard(
+                                st.session_state.student_name,
+                                st.session_state.quiz_score,
+                                st.session_state.quiz_total,
+                                round(final_accuracy, 1),
+                                word_source,
+                                total_words
+                            ):
+                                st.session_state.leaderboard_saved = True
+                                # Update user stats
+                                if 'username' in st.session_state:
+                                    update_user_stats(st.session_state.username, round(final_accuracy, 1))
+                        
                         st.markdown(f"""
                         <div style='background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%); 
                                     padding: 2em; 
@@ -767,7 +1126,10 @@ def quiz_tile(speech_rate=100):
                                 You've completed the quiz! 🌟
                             </p>
                             <p style='margin: 0.5em 0 0 0; color: #636e72; font-size: 1em;'>
-                                Final Score: {st.session_state.quiz_score}/{st.session_state.quiz_total}
+                                Final Score: {st.session_state.quiz_score}/{st.session_state.quiz_total} ({final_accuracy:.1f}%)
+                            </p>
+                            <p style='margin: 0.3em 0 0 0; color: #2ecc71; font-size: 0.9em; font-weight: 600;'>
+                                ✅ Score saved to leaderboard!
                             </p>
                         </div>
                         """, unsafe_allow_html=True)
@@ -779,6 +1141,7 @@ def quiz_tile(speech_rate=100):
                             st.session_state.quiz_total = 0
                             st.session_state.answer_submitted = False
                             st.session_state.quiz_history = []
+                            st.session_state.leaderboard_saved = False
                             st.rerun()
                 else:
                     st.warning("Please upload a PDF first to load quiz words.")
@@ -1162,6 +1525,167 @@ def quiz_tile(speech_rate=100):
         
         st.markdown('</div>', unsafe_allow_html=True)
 
+def leaderboard_tile():
+    """Display leaderboard with top scores and user history."""
+    with st.container():
+        st.markdown('<div class="tile"><div class="tile-title">🏆 Leaderboard</div>', unsafe_allow_html=True)
+        
+        # Create tabs for different leaderboard views
+        lb_tab1, lb_tab2, lb_tab3 = st.tabs(["🌟 Top Performers", "👤 My Scores", "📊 All Scores"])
+        
+        with lb_tab1:
+            st.markdown("### 🏅 Top 10 Performers")
+            st.markdown("*Ranked by best accuracy*")
+            
+            top_scores = get_top_scores(10)
+            
+            if top_scores:
+                for idx, entry in enumerate(top_scores, 1):
+                    # Medal emojis for top 3
+                    if idx == 1:
+                        medal = "🥇"
+                        bg_color = "#ffd700"
+                    elif idx == 2:
+                        medal = "🥈"
+                        bg_color = "#c0c0c0"
+                    elif idx == 3:
+                        medal = "🥉"
+                        bg_color = "#cd7f32"
+                    else:
+                        medal = f"#{idx}"
+                        bg_color = "#e3eafc"
+                    
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, {bg_color}20 0%, {bg_color}10 100%); 
+                                padding: 1em; 
+                                border-radius: 10px; 
+                                border-left: 4px solid {bg_color}; 
+                                margin: 0.5em 0;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <div>
+                                <p style='margin: 0; font-size: 1.2em; font-weight: 700; color: #2a3b5d;'>
+                                    {medal} {entry['name']}
+                                </p>
+                                <p style='margin: 0.2em 0 0 0; font-size: 0.85em; color: #636e72;'>
+                                    📅 Last Quiz: {entry['last_quiz_date']} | 🎯 {entry['total_quizzes']} quiz(es)
+                                </p>
+                            </div>
+                            <div style='text-align: right;'>
+                                <p style='margin: 0; font-size: 1.5em; font-weight: 800; color: #2ecc71;'>
+                                    {entry['best_accuracy']}%
+                                </p>
+                                <p style='margin: 0; font-size: 0.9em; color: #636e72;'>
+                                    Best | Avg: {entry['avg_accuracy']}%
+                                </p>
+                                <p style='margin: 0; font-size: 0.85em; color: #95a5a6;'>
+                                    {entry['total_score']}/{entry['total_questions']} total
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("🎯 No scores yet! Complete a quiz to be the first on the leaderboard!")
+        
+        with lb_tab2:
+            st.markdown("### 📈 My Recent Performance")
+            
+            if st.session_state.get('name_submitted') and st.session_state.get('student_name'):
+                user_name = st.session_state.student_name
+                user_data, user_scores = get_user_scores(user_name, 10)
+                
+                if user_data:
+                    st.success(f"Found {user_data['total_quizzes']} quiz(es) for **{user_name}**")
+                    
+                    # Display stats
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("🎯 Total Quizzes", user_data['total_quizzes'])
+                    with col2:
+                        st.metric("📊 Avg Accuracy", f"{user_data['avg_accuracy']}%")
+                    with col3:
+                        st.metric("⭐ Best Score", f"{user_data['best_accuracy']}%")
+                    with col4:
+                        st.metric("📝 Total Score", f"{user_data['total_score']}/{user_data['total_questions']}")
+                    
+                    st.markdown("---")
+                    st.markdown("**Recent Attempts:**")
+                    
+                    for idx, entry in enumerate(user_scores, 1):
+                        # Determine color based on accuracy
+                        if entry['accuracy'] >= 90:
+                            color = "#2ecc71"
+                            emoji = "🌟"
+                        elif entry['accuracy'] >= 75:
+                            color = "#3498db"
+                            emoji = "👍"
+                        elif entry['accuracy'] >= 50:
+                            color = "#f39c12"
+                            emoji = "📖"
+                        else:
+                            color = "#e74c3c"
+                            emoji = "💪"
+                        
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, {color}15 0%, {color}05 100%); 
+                                    padding: 0.8em; 
+                                    border-radius: 8px; 
+                                    border-left: 3px solid {color}; 
+                                    margin: 0.4em 0;'>
+                            <p style='margin: 0; font-size: 0.95em; font-weight: 600; color: #2a3b5d;'>
+                                {emoji} Quiz #{user_data['total_quizzes'] - idx + 1} - {entry['timestamp']}
+                            </p>
+                            <p style='margin: 0.2em 0 0 0; font-size: 0.85em; color: #636e72;'>
+                                Score: <strong>{entry['score']}/{entry['total']}</strong> | 
+                                Accuracy: <strong style='color: {color};'>{entry['accuracy']}%</strong> | 
+                                Source: {entry['word_source'].title()}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info(f"No scores found for **{user_name}**. Complete a quiz to see your scores here!")
+            else:
+                st.warning("👤 Please login to view your scores!")
+        
+        with lb_tab3:
+            st.markdown("### 📋 All Users Overview")
+            
+            all_scores = load_leaderboard()
+            
+            if all_scores:
+                st.info(f"Showing {len(all_scores)} users")
+                
+                # Convert dict to list and sort by best accuracy
+                all_users = list(all_scores.values())
+                all_users_sorted = sorted(all_users, key=lambda x: (x['best_accuracy'], x['total_score']), reverse=True)
+                
+                # Display in a scrollable container
+                for idx, entry in enumerate(all_users_sorted, 1):
+                    accuracy_color = "#2ecc71" if entry['best_accuracy'] >= 75 else "#f39c12" if entry['best_accuracy'] >= 50 else "#e74c3c"
+                    
+                    st.markdown(f"""
+                    <div style='background: #f8f9fa; 
+                                padding: 0.7em; 
+                                border-radius: 6px; 
+                                margin: 0.3em 0;
+                                border-left: 3px solid {accuracy_color};'>
+                        <p style='margin: 0; font-size: 0.9em; color: #2a3b5d;'>
+                            <strong>#{idx} {entry['name']}</strong>
+                        </p>
+                        <p style='margin: 0.2em 0 0 0; font-size: 0.8em; color: #636e72;'>
+                            Best: {entry['best_accuracy']}% | Avg: {entry['avg_accuracy']}% | 
+                            {entry['total_quizzes']} quiz(es) | Total: {entry['total_score']}/{entry['total_questions']}
+                        </p>
+                        <p style='margin: 0.2em 0 0 0; font-size: 0.75em; color: #95a5a6;'>
+                            Last quiz: {entry['last_quiz_date']}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("📭 No scores recorded yet. Be the first to complete a quiz!")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
 def spelling_checker_tile(speech_rate=100):
     """Spelling checker tile with pronunciation helper."""
     with st.container():
@@ -1278,6 +1802,9 @@ with st.expander("📱 Using on Mobile? Read this!", expanded=False):
     """)
 
 rate_slider = st.slider("Adjust speech rate (%)", min_value=30, max_value=150, value=100, step=10, key="speech_rate_slider")
+
+# Display sidebar leaderboard
+sidebar_leaderboard()
 
 # Create tabs for different features
 tab1, tab2, tab3, tab4 = st.tabs([

@@ -4,11 +4,107 @@ A comprehensive pronunciation and spelling learning application built with Strea
 
 ## ✨ Features
 
+### 🔐 User Authentication System
+- **Secure Login & Registration:**
+  - Username and password-based authentication
+  - New user registration with validation
+  - Minimum 3 characters for username
+  - Minimum 4 characters for password
+  - ## 📊 Data Files
+
+The application creates and maintains two JSON files:
+
+### users.json
+Stores user account information:
+```json
+{
+  "username": {
+    "password": "user_password",
+    "full_name": "User Full Name",
+    "created_at": "2025-10-18 00:00:00",
+    "total_quizzes": 5,
+    "best_score": 100.0
+  }
+}
+```
+
+### leaderboard.json
+Stores cumulative quiz statistics per user:
+```json
+{
+  "username": {
+    "name": "Full Name",
+    "total_score": 50,
+    "total_questions": 75,
+    "total_quizzes": 5,
+    "best_accuracy": 100.0,
+    "avg_accuracy": 85.3,
+    "last_quiz_date": "2025-10-18 00:19:14",
+    "quiz_history": [
+      {
+        "score": 10,
+        "total": 15,
+        "accuracy": 66.7,
+        "timestamp": "2025-10-18 00:15:00",
+        "word_source": "predefined"
+      }
+    ]
+  }
+}
+```
+
+**Note:** 
+- Backup these files regularly to preserve user data
+- In production, passwords should be hashed (not stored in plain text)
+- Files are automatically created on first use
+
+## 📊 Troubleshooting
+
+### Login/Authentication Issues
+- **Forgot Password**: No recovery mechanism yet (admin must edit users.json)
+- **Username Taken**: Choose a different username
+- **Login Failed**: Check username and password (case-sensitive)
+- **Session Lost**: Re-login if session expires
+
+### Leaderboard Issues
+- **Stats Not Updating**: Refresh the page after quiz completion
+- **Missing User**: Ensure you completed at least one quiz while logged in
+- **Duplicate Entries (Old)**: System auto-migrates old format to new
+
+### AxiosError: Network Error (Samsung Tablets/Mobile Devices)sword confirmation during registration
+  - Unique username enforcement
+  
+- **User Profile Management:**
+  - Personalized greetings with full name and username
+  - Real-time stats display (total quizzes, best score)
+  - Logout functionality
+  - Session persistence
+
+### 🏆 Comprehensive Leaderboard System
+- **Cumulative User Tracking:**
+  - Single entry per user (no duplicates)
+  - Automatic score aggregation across quizzes
+  - Best accuracy and average accuracy tracking
+  - Total quizzes, total score, and total questions tracked
+  - Complete quiz history for each user
+  
+- **Sidebar Leaderboard:**
+  - Always visible top 5 performers
+  - Shows best accuracy, average accuracy, and total quizzes
+  - Medal indicators (🥇🥈🥉) for top 3
+  - Auto-updates after each quiz
+  
+- **Detailed Leaderboard Tabs:**
+  - **Top Performers**: Ranked by best accuracy
+  - **My Scores**: Personal stats and complete quiz history
+  - **All Users**: Overview of all registered users
+
 ### 🎯 Pronunciation Quiz (Main Feature)
-- **Personalized Learning Experience:**
-  - Enter your name to track progress
-  - Personalized greetings and feedback
-  - Individual session tracking
+- **User-Based Learning Experience:**
+  - Login required to track progress
+  - Personalized dashboard with stats
+  - Individual quiz history tracking
+  - Best score and average accuracy calculation
   
 - **Three Word Sources:**
   - 📚 **Predefined Source**: 750 curated words with proper formatting (multi-word phrases, hyphens, apostrophes)
@@ -134,12 +230,28 @@ A comprehensive pronunciation and spelling learning application built with Strea
 
 ## 🎮 How to Use
 
+### First Time Setup
+
+1. **Register an Account:**
+   - Click the "📝 Register" button
+   - Enter your full name
+   - Choose a unique username (min 3 characters)
+   - Create a password (min 4 characters)
+   - Confirm your password
+   - Click "✨ Create Account"
+
+2. **Login:**
+   - Click the "🔑 Login" button (default view)
+   - Enter your username and password
+   - Click "🚀 Login"
+   - Welcome back message displays your stats
+
 ### Pronunciation Quiz
 
-1. **Enter Your Name:**
-   - Type your name in the welcome screen
-   - Click "Start Learning"
-   - Your progress will be tracked with your name
+1. **After Login:**
+   - See your personalized dashboard with username and stats
+   - View sidebar leaderboard showing top 5 performers
+   - Logout button available in top right
 
 2. **Choose Competition Mode (Optional):**
    - Check "Enable Competition Mode" for timed challenges
@@ -204,28 +316,39 @@ A comprehensive pronunciation and spelling learning application built with Strea
 ## 🏫 Use Cases
 
 ### For Teachers
+- Create student accounts and track individual progress
 - Use 750 predefined curated words or create custom tests from curriculum PDFs
 - Enable competition mode for timed spelling bees
 - Choose appropriate difficulty levels for different grades
-- Track student progress with performance metrics
+- Monitor class performance through leaderboard
+- View detailed statistics for each student
+- Track best scores and average accuracy
 - Monitor common mistakes through revision lists
 - Use as a classroom tool for pronunciation practice
 - Create custom word ranges for targeted learning
+- Review complete quiz history for assessment
 
 ### For Students
+- Create personal account to track progress over time
 - Practice spelling independently with instant feedback
 - Use competition mode to challenge yourself
+- View your ranking on the leaderboard
+- Track personal best and average scores
 - Review difficult words from textbooks via PDF upload
 - Prepare for spelling bees with timed practice
 - Build vocabulary with pronunciation and definitions
-- Track improvement over time with performance tracker
+- See complete quiz history and improvement trends
 - Learn case-sensitive spelling (important for proper nouns)
 - Get detailed feedback on error types (case vs spelling)
+- Compete with classmates on the leaderboard
 
 ### For Parents
+- Create accounts for children to monitor progress
+- Track improvement through cumulative statistics
 - Help children with homework using predefined word lists
 - Create fun spelling challenges with timer
-- Monitor learning progress through performance metrics
+- View best scores and quiz history
+- Compare performance with peers (leaderboard)
 - Supplement school education with targeted practice
 - Practice at appropriate difficulty levels
 - Use custom word ranges for focused learning
@@ -247,13 +370,53 @@ A comprehensive pronunciation and spelling learning application built with Strea
 
 ## 🔧 Technical Details
 
+### Authentication & User Management
+- **User Authentication**:
+  - Username/password based login system
+  - Secure user registration with validation
+  - Password storage (Note: In production, use hashed passwords!)
+  - Session-based authentication
+  - Logout functionality
+  
+- **Data Storage**:
+  - `users.json`: Stores user credentials and basic info
+  - `leaderboard.json`: Stores cumulative quiz statistics
+  - JSON format for easy backup and portability
+  - Auto-migration from old format to new format
+
+### Leaderboard System
+- **Cumulative Tracking**:
+  - Single entry per user (no duplicates)
+  - Automatic aggregation of quiz results
+  - Best accuracy tracking
+  - Average accuracy calculation
+  - Total score across all quizzes
+  - Total questions attempted
+  - Complete quiz history array
+  
+- **Data Structure**:
+  ```json
+  {
+    "username": {
+      "name": "Full Name",
+      "total_score": 50,
+      "total_questions": 75,
+      "total_quizzes": 5,
+      "best_accuracy": 100.0,
+      "avg_accuracy": 85.3,
+      "last_quiz_date": "2025-10-18 00:19:14",
+      "quiz_history": [...]
+    }
+  }
+  ```
+
 ### Session Isolation & Personalization
-- Each user enters their name for personalized experience
-- Individual quiz sessions with isolated state
-- Scores and progress are independent per user
-- No data shared between users
+- Each logged-in user has isolated session state
+- Individual quiz sessions with secure authentication
+- Scores and progress linked to user accounts
 - Safe for multi-user environments
-- Name-based progress tracking
+- Real-time stats display
+- Persistent user data across sessions
 
 ### Smart Word Extraction
 - **Predefined Source**: 750 hand-curated words with:
@@ -347,6 +510,16 @@ streamlit run spellbowl.py
 
 ## 🆕 Latest Updates
 
+### Version 3.0 Features (New! 🎉)
+- ✅ **User Authentication System**: Secure login and registration
+- ✅ **Cumulative Leaderboard**: Single entry per user with aggregated stats
+- ✅ **Sidebar Leaderboard**: Always-visible top 5 performers
+- ✅ **Personal Dashboard**: Real-time stats (total quizzes, best score, average)
+- ✅ **Quiz History Tracking**: Complete history of all quiz attempts
+- ✅ **Best & Average Accuracy**: Track improvement over time
+- ✅ **User Profile Management**: Logout functionality and session persistence
+- ✅ **Automatic Data Migration**: Seamlessly converts old format to new
+
 ### Version 2.0 Features
 - ✅ **Personalized Experience**: Name-based progress tracking
 - ✅ **Competition Mode**: Timed challenges with adjustable timer
@@ -362,6 +535,12 @@ streamlit run spellbowl.py
 - ✅ **Universal PDF Support**: Works with various PDF formats
 
 ### Key Improvements
+- User accounts with secure authentication
+- Cumulative statistics per user (no duplicate entries)
+- Best score and average accuracy tracking
+- Complete quiz history for each user
+- Sidebar leaderboard with top performers
+- Real-time stats updates after each quiz
 - Timer starts after audio plays (prevents premature timing)
 - Case-sensitive answer validation
 - Detailed error feedback (case vs spelling)
