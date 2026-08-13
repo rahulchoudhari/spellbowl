@@ -14,7 +14,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 from nltk.corpus import wordnet
-from pkg_resources import resource_stream
 from predefined_words import predefined_words
 
 # Page Configuration
