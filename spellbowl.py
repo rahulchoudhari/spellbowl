@@ -926,7 +926,7 @@ def quiz_tile(speech_rate=100):
                         st.session_state.last_pdf_name = "predefined_list"
                         
                         st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from predefined list!")
-                        st.info("👇 Select word range below and click 'Get Random Word' to start!")
+                        st.info("👇 Select word range below and click 'Get Next Word' to start!")
                 except Exception as e:
                     st.error(f"Error loading predefined words: {str(e)}")
                 
@@ -995,7 +995,7 @@ def quiz_tile(speech_rate=100):
                 st.session_state.leaderboard_saved = False
                 
                 st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from {difficulty_level}!")
-                st.info("👇 Select word range below and click 'Get Random Word' to start!")
+                st.info("👇 Select word range below and click 'Get Next Word' to start!")
                 st.rerun()
 
         # Optional smart extraction toggle for PDF-based sources
@@ -1040,7 +1040,7 @@ def quiz_tile(speech_rate=100):
                 st.session_state.leaderboard_saved = False
 
                 st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words!")
-                st.info("👇 Select word range below and click 'Get Random Word' to start!")
+                st.info("👇 Select word range below and click 'Get Next Word' to start!")
             except Exception as e:
                 st.error(f"Error reading PDF: {str(e)}")
                 return
@@ -1161,6 +1161,13 @@ def quiz_tile(speech_rate=100):
                     st.info(f"📊 Currently practicing: **{len(st.session_state.quiz_words)} words** (Word #{first_word_idx} to #{last_word_idx} from total **{total_words} words**)")
                 else:
                     st.info(f"📊 Currently practicing: **{len(st.session_state.quiz_words)} words** from total **{total_words} words**")
+
+                st.checkbox(
+                    "🔀 Randomize word order",
+                    value=False,
+                    key="randomize_order",
+                    help="Off by default: words come one after another in list order. Turn this on to get them in random order instead."
+                )
                 st.markdown("---")
             
             # Display score
@@ -1252,33 +1259,39 @@ def quiz_tile(speech_rate=100):
                         st.metric("⭐ Best Streak", f"{max_streak}")
             
             # Show status message
+            randomize_order = st.session_state.get('randomize_order', False)
+            word_btn_label = "🎲 Get Random Word" if randomize_order else "➡️ Get Next Word"
+
             if st.session_state.current_quiz_word is None:
-                st.info(f"👉 {st.session_state.student_name}, click 'Get Random Word' to start!")
+                st.info(f"👉 {st.session_state.student_name}, click '{word_btn_label}' to start!")
             elif not st.session_state.answer_submitted:
                 st.info(f"🎧 {st.session_state.student_name}, listen carefully and type your answer!")
-            
+
             col_a, col_b, col_c = st.columns([1, 1, 1])
-            
+
             with col_a:
                 # Check if all words have been used
                 if st.session_state.quiz_words:
                     available_words = [w for w in st.session_state.quiz_words if w not in st.session_state.used_quiz_words]
-                    
+
                     if available_words:
                         # Only allow getting a new word if no current word or answer was already submitted
                         can_get_word = st.session_state.current_quiz_word is None or st.session_state.answer_submitted
-                        
+
                         if can_get_word:
-                            if st.button("🎲 Get Random Word", key="random_word_btn"):
-                                import random
-                                selected_word = random.choice(available_words)
+                            if st.button(word_btn_label, key="random_word_btn"):
+                                if randomize_order:
+                                    import random
+                                    selected_word = random.choice(available_words)
+                                else:
+                                    selected_word = available_words[0]
                                 st.session_state.current_quiz_word = selected_word
                                 st.session_state.quiz_attempts = 0
                                 st.session_state.answer_submitted = False
                                 st.session_state.time_expired = False
                                 # Reset timer - will start when pronunciation is played
                                 st.session_state.timer_start = None
-                                
+
                                 # Debug: Find the word position in original list
                                 if 'all_loaded_words' in st.session_state:
                                     try:
@@ -1290,7 +1303,7 @@ def quiz_tile(speech_rate=100):
                                     st.toast(f"Word selected! Click 'Play Pronunciation' to hear it.", icon="✅")
                                 st.rerun()
                         else:
-                            st.button("🎲 Get Random Word", key="random_word_btn", disabled=True)
+                            st.button(word_btn_label, key="random_word_btn", disabled=True)
                             st.caption("⚠️ Answer the current word first or skip it")
                     else:
                         # Quiz completed - save to leaderboard
@@ -1721,7 +1734,7 @@ def quiz_tile(speech_rate=100):
             **How it works:**
             1. Pick a word source: the predefined list, this year's official list, your own PDF, or a difficulty level
             2. System will load words for you (up to 50 to start)
-            3. Click 'Get Random Word' to start
+            3. Click 'Get Next Word' to start
             4. Listen to pronunciation (no spelling shown!)
             5. Type what you heard and check your answer
             """)
