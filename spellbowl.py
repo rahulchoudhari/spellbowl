@@ -62,6 +62,25 @@ def get_pdf_path_for_category(year, category):
 
 
 # PDF Extraction Helpers
+
+# Matches numbered list entries like "1. aardvark", "2) Big Dipper", "3: about-face"
+NUMBERED_ENTRY_RE = re.compile(
+    r'\d+\s*[\.\)\:]\s*([A-Za-z][A-Za-z\'\-]*(?:[ \t]+[A-Za-z][A-Za-z\'\-]*){0,3}?)(?=\s*\d+\s*[\.\)\:]|\n|$)'
+)
+MIN_NUMBERED_ENTRIES = 5  # below this, the PDF probably isn't a numbered list - fall back to full-text scan
+
+
+def extract_numbered_entries(text):
+    """Pull out only the words/phrases that follow a list number (e.g. '1. aardvark'),
+    which skips titles, headers, and instructions on official word-list PDFs."""
+    entries = []
+    for raw in NUMBERED_ENTRY_RE.findall(text):
+        entry = raw.strip()
+        if entry and len(entry.replace(' ', '')) >= 2:
+            entries.append(entry)
+    return entries
+
+
 def read_pdf_text(pdf_source):
     """Extract raw text from an uploaded file-like object or a PDF path on disk."""
     reader = PyPDF2.PdfReader(pdf_source)
@@ -112,7 +131,9 @@ def extract_ner_phrases(text, ner_pipe, chunk_chars=800):
 
 
 def extract_words_from_text(text, use_smart_extraction=False):
-    """Turn raw PDF text into a sorted, deduped word/phrase list (case preserved on first sighting)."""
+    """Turn raw PDF text into a sorted, deduped word/phrase list (case preserved on first sighting).
+    Prefers numbered-list entries ('1. aardvark') when the PDF looks like one, since that reliably
+    skips titles/headers/instructions; otherwise falls back to scanning the whole text."""
     phrases = set()
     if use_smart_extraction:
         ner_pipe = load_ner_pipeline()
@@ -124,8 +145,12 @@ def extract_words_from_text(text, use_smart_extraction=False):
         else:
             st.info("💡 Smart extraction needs extra packages (`pip install -r requirements-optional.txt`). Using standard extraction for now.")
 
-    words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
-    words = [w.strip() for w in words if len(w.strip()) >= 4]
+    numbered_words = extract_numbered_entries(text)
+    if len(numbered_words) >= MIN_NUMBERED_ENTRIES:
+        words = numbered_words
+    else:
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
+        words = [w.strip() for w in words if len(w.strip()) >= 4]
 
     unique_words = {}
     for word in words:
