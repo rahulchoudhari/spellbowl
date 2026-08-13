@@ -195,6 +195,8 @@ No need to hunt for a file — official word lists are bundled right in the app,
   ```
 - Folder/division names can be anything — they're shown to students title-cased (e.g. `elementary` → "Elementary").
 
+> **📌 Note:** Word extraction from PDFs is automated and, while accurate, isn't guaranteed to catch every single word perfectly (PDF formatting quirks can occasionally cause a word to be missed or misread). Always treat the official PDF provided by your school, or the official list at [iasp.org/student-programs/spell-bowl](https://iasp.org/student-programs/spell-bowl/), as the source of truth when preparing for competition.
+
 ### ✨ Smart Extraction (optional, Hugging Face)
 When extracting words from a PDF (uploaded or yearly), students/teachers can enable **Smart extraction**, which uses a small Hugging Face NER model (`dslim/distilbert-NER`) to keep multi-word proper-noun phrases together (e.g. "Mount Rushmore", "Rio Grande") instead of splitting them into separate words — matching the quality of the hand-curated predefined list.
 - Off by default, and fully optional — the app works normally without it (falls back to standard regex extraction).
@@ -249,7 +251,7 @@ When extracting words from a PDF (uploaded or yearly), students/teachers can ena
 ## 📦 Dependencies
 
 - **streamlit** (>=1.28.0): Web framework for the app
-- **PyPDF2** (>=3.0.0): PDF text extraction
+- **pypdf** (>=4.0.0): PDF text extraction (layout-aware, needed for multi-column word-list PDFs)
 - **gTTS** (>=2.4.0): Google Text-to-Speech engine
 - **pronouncing** (>=0.2.0): ARPAbet pronunciation lookup
 - **nltk** (>=3.8.1): Natural Language Toolkit for spell checking
@@ -516,7 +518,7 @@ Built with:
 - [Streamlit](https://streamlit.io/) - Web framework
 - [gTTS](https://github.com/pndurette/gTTS) - Google Text-to-Speech
 - [NLTK](https://www.nltk.org/) - Natural Language Processing
-- [PyPDF2](https://pypdf2.readthedocs.io/) - PDF processing
+- [pypdf](https://pypdf.readthedocs.io/) - PDF processing
 - [Pronouncing](https://pronouncing.readthedocs.io/) - Phonetic lookup
 
 ## 📞 Support

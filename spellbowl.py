@@ -1,6 +1,6 @@
 import streamlit as st
 import difflib
-import PyPDF2
+import pypdf
 from gtts import gTTS
 import tempfile
 import pronouncing
@@ -119,11 +119,17 @@ def extract_numbered_entries(text):
 
 
 def read_pdf_text(pdf_source):
-    """Extract raw text from an uploaded file-like object or a PDF path on disk."""
-    reader = PyPDF2.PdfReader(pdf_source)
+    """Extract raw text from an uploaded file-like object or a PDF path on disk.
+    Uses layout-preserving extraction: word lists formatted as multi-column tables
+    (common in longer official lists) otherwise get their columns read out of order,
+    which can split numbers/words across lines and silently drop entries."""
+    reader = pypdf.PdfReader(pdf_source)
     text = ""
     for page in reader.pages:
-        page_text = page.extract_text()
+        try:
+            page_text = page.extract_text(extraction_mode="layout")
+        except TypeError:
+            page_text = page.extract_text()
         if page_text:
             text += page_text + "\n"  # newline (not space) so page breaks don't glue words together
     return normalize_pdf_text(text)
@@ -885,6 +891,12 @@ def quiz_tile(speech_rate=100):
         st.markdown("---")
         st.markdown("### 📚 Choose Word Source")
         st.caption("Not sure which to pick? Try **📅 This Year's Word List** — it's already loaded for you, no file needed!")
+        st.info(
+            "📌 **Note:** Word lists here are extracted automatically and may occasionally miss or misread a word. "
+            "Always treat the official PDF provided by your school, or the official list at "
+            "[iasp.org/student-programs/spell-bowl](https://iasp.org/student-programs/spell-bowl/), "
+            "as the source of truth for competition prep."
+        )
         word_source = st.radio(
             "Select word source:",
             options=["Predefined Source", "📅 This Year's Word List", "Upload PDF", "System Generated"],
