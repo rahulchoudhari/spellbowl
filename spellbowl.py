@@ -63,9 +63,46 @@ def get_pdf_path_for_category(year, category):
 
 # PDF Extraction Helpers
 
-# Matches numbered list entries like "1. aardvark", "2) Big Dipper", "3: about-face"
+# PDF fonts commonly render these as single ligature glyphs instead of separate letters
+# (e.g. "beneﬁting" instead of "benefiting"), which breaks naive letter-only regexes.
+PDF_LIGATURES = {
+    'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl',
+    'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'ft', 'ﬆ': 'st',
+}
+# Smart/curly punctuation that word processors substitute for the plain ASCII versions
+PDF_SMART_PUNCT = {
+    '‘': "'", '’': "'", '“': '"', '”': '"',
+    '–': '-', '—': '-', '\xa0': ' ',
+}
+
+
+def normalize_pdf_text(text):
+    """Undo common PDF text-extraction quirks (ligatures, smart quotes) that would
+    otherwise fragment words like "o'clock" or "beneﬁting" during extraction."""
+    for ligature, plain in PDF_LIGATURES.items():
+        text = text.replace(ligature, plain)
+    for fancy, plain in PDF_SMART_PUNCT.items():
+        text = text.replace(fancy, plain)
+    # Some PDFs render hyphenated compounds with a stray space before the hyphen
+    # (e.g. "good -natured"); collapse that back into "good-natured".
+    text = re.sub(r'([^\W\d_])\s+-\s*([^\W\d_])', r'\1-\2', text)
+    return text
+
+
+# Unicode-aware letter class (covers accented letters like "é") and word-char class
+# (letters plus apostrophes/hyphens, for words like "o'clock" or "cross-cultural")
+_LETTER = r'[^\W\d_]'
+_WORDCHAR = r"(?:[^\W\d_]|['\-])"
+
+# Matches numbered list entries like "1. aardvark", "2) Big Dipper", "3: about-face".
+# Prefers stopping at the next list number or a newline, but falls back to a single
+# word if no clean boundary is found (e.g. the last entry runs into trailing prose).
 NUMBERED_ENTRY_RE = re.compile(
-    r'\d+\s*[\.\)\:]\s*([A-Za-z][A-Za-z\'\-]*(?:[ \t]+[A-Za-z][A-Za-z\'\-]*){0,3}?)(?=\s*\d+\s*[\.\)\:]|\n|$)'
+    r'\d+\s*[\.\)\:]\s*('
+    rf'{_LETTER}{_WORDCHAR}*(?:[ \t]+{_LETTER}{_WORDCHAR}*){{0,3}}(?=\s*\d+\s*[\.\)\:]|\n|$)'
+    r'|'
+    rf'{_LETTER}{_WORDCHAR}*'
+    r')'
 )
 MIN_NUMBERED_ENTRIES = 5  # below this, the PDF probably isn't a numbered list - fall back to full-text scan
 
@@ -88,8 +125,8 @@ def read_pdf_text(pdf_source):
     for page in reader.pages:
         page_text = page.extract_text()
         if page_text:
-            text += page_text + " "
-    return text
+            text += page_text + "\n"  # newline (not space) so page breaks don't glue words together
+    return normalize_pdf_text(text)
 
 
 @st.cache_resource(show_spinner="🧠 Loading smart extraction model (first time only)...")
@@ -149,7 +186,7 @@ def extract_words_from_text(text, use_smart_extraction=False):
     if len(numbered_words) >= MIN_NUMBERED_ENTRIES:
         words = numbered_words
     else:
-        words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
+        words = re.findall(rf'\b{_LETTER}{{4,}}\b', text)
         words = [w.strip() for w in words if len(w.strip()) >= 4]
 
     unique_words = {}
