@@ -1,0 +1,12 @@
+# Optional extras for the "Smart extraction" feature (Hugging Face NER model).
+# Not required to run the app — without these, PDF word extraction falls back
+# to the standard regex-based extraction automatically.
+#
+# Install with: pip install -r requirements-optional.txt
+#
+# Note: these packages add a sizeable download (~500MB+ including the model
+# weights, which are fetched on first use). This may exceed free-tier hosting
+# limits (e.g. Streamlit Community Cloud), so only install where you have
+# room for it.
+transformers>=4.30.0
+torch>=2.0.0

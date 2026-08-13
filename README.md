@@ -106,8 +106,9 @@ Stores cumulative quiz statistics per user:
   - Individual quiz history tracking
   - Best score and average accuracy calculation
   
-- **Three Word Sources:**
+- **Four Word Sources:**
   - 📚 **Predefined Source**: 750 curated words with proper formatting (multi-word phrases, hyphens, apostrophes)
+  - 📅 **This Year's Word List**: Prepopulated, teacher-provided PDFs organized by year and division — no upload needed, just pick Year → Division
   - 📄 **Upload PDF**: Extract words from any PDF document
   - 🎓 **System Generated**: Pre-curated word lists by difficulty level
   
@@ -181,6 +182,25 @@ Stores cumulative quiz statistics per user:
 - ARPAbet notation display
 - Adjustable speech rate
 
+### 📅 Yearly Prepopulated Word Lists
+No need to hunt for a file — official word lists are bundled right in the app, organized by year and division.
+
+- **How it works for students:** pick `📅 This Year's Word List` as the word source, choose the **Year** (e.g. 2026) and **Division** (e.g. Elementary), and the matching PDF loads automatically.
+- **How teachers add a new year:** create a folder named after the year (e.g. `2027/`) next to `spellbowl.py`, then a subfolder per division (e.g. `elementary/`, `junior/`, `senior/`) containing that division's word-list PDF. The app auto-discovers any year/division folder that contains a `.pdf` — no code changes needed. The existing `2026/` folder is a working example:
+  ```
+  2026/
+    elementary/ElementarySpellBowlList.pdf
+    junior/JuniorSpellBowlList.pdf
+    senior/SeniorSpellBowlList.pdf
+  ```
+- Folder/division names can be anything — they're shown to students title-cased (e.g. `elementary` → "Elementary").
+
+### ✨ Smart Extraction (optional, Hugging Face)
+When extracting words from a PDF (uploaded or yearly), students/teachers can enable **Smart extraction**, which uses a small Hugging Face NER model (`dslim/distilbert-NER`) to keep multi-word proper-noun phrases together (e.g. "Mount Rushmore", "Rio Grande") instead of splitting them into separate words — matching the quality of the hand-curated predefined list.
+- Off by default, and fully optional — the app works normally without it (falls back to standard regex extraction).
+- Requires extra packages; see [Installation](#-installation) below.
+- Downloads a small model (~250MB) the first time it's used, then it's cached for the session.
+
 ### ✍️ Manual Word Pronunciation
 - Enter any word manually
 - Instant pronunciation lookup
@@ -211,6 +231,12 @@ Stores cumulative quiz statistics per user:
    pip install -r requirements.txt
    ```
 
+   Optional — for the "✨ Smart extraction" feature (better handling of proper-noun phrases in PDFs):
+   ```bash
+   pip install -r requirements-optional.txt
+   ```
+   This is not required to run the app; skip it if you're on a resource-limited host (e.g. Streamlit Community Cloud free tier), since it adds a sizeable download (~500MB+).
+
 4. **Run the application:**
    ```bash
    streamlit run spellbowl.py
@@ -227,6 +253,7 @@ Stores cumulative quiz statistics per user:
 - **gTTS** (>=2.4.0): Google Text-to-Speech engine
 - **pronouncing** (>=0.2.0): ARPAbet pronunciation lookup
 - **nltk** (>=3.8.1): Natural Language Toolkit for spell checking
+- **transformers** + **torch** (optional, see `requirements-optional.txt`): Hugging Face NER model powering "Smart extraction"
 
 ## 🎮 How to Use
 
@@ -510,7 +537,13 @@ streamlit run spellbowl.py
 
 ## 🆕 Latest Updates
 
-### Version 3.0 Features (New! 🎉)
+### Version 4.0 Features (New! 🎉)
+- ✅ **Yearly Prepopulated Word Lists**: Pick Year → Division and the official list loads automatically, no upload needed
+- ✅ **Auto-Discovered Year Folders**: Teachers add a new year by just dropping in a folder — no code changes
+- ✅ **Smart Extraction (optional)**: Hugging Face NER model keeps proper-noun phrases together when reading PDFs
+- ✅ **Friendlier Upload Flow**: Clearer guidance, loading spinners, and simplified messaging for students uploading their own PDF
+
+### Version 3.0 Features
 - ✅ **User Authentication System**: Secure login and registration
 - ✅ **Cumulative Leaderboard**: Single entry per user with aggregated stats
 - ✅ **Sidebar Leaderboard**: Always-visible top 5 performers

@@ -29,6 +29,124 @@ st.set_page_config(
 LEADERBOARD_FILE = "leaderboard.json"
 USERS_FILE = "users.json"
 
+# Base directory of the app (used to find yearly word list folders regardless of cwd)
+APP_DIR = Path(__file__).resolve().parent
+
+
+# Yearly Prepopulated Word List Helpers
+def get_available_years():
+    """Find year folders (e.g. '2026') that sit next to spellbowl.py, newest first."""
+    years = []
+    if APP_DIR.exists():
+        for entry in APP_DIR.iterdir():
+            if entry.is_dir() and re.fullmatch(r"\d{4}", entry.name):
+                years.append(entry.name)
+    return sorted(years, reverse=True)
+
+
+def get_categories_for_year(year):
+    """Find division subfolders (e.g. 'elementary') inside a year folder that contain a PDF."""
+    year_dir = APP_DIR / year
+    categories = []
+    if year_dir.exists():
+        for entry in sorted(year_dir.iterdir()):
+            if entry.is_dir() and any(entry.glob("*.pdf")):
+                categories.append(entry.name)
+    return categories
+
+
+def get_pdf_path_for_category(year, category):
+    """Return the first PDF found for a given year/division, or None."""
+    cat_dir = APP_DIR / year / category
+    pdfs = sorted(cat_dir.glob("*.pdf"))
+    return pdfs[0] if pdfs else None
+
+
+# PDF Extraction Helpers
+def read_pdf_text(pdf_source):
+    """Extract raw text from an uploaded file-like object or a PDF path on disk."""
+    reader = PyPDF2.PdfReader(pdf_source)
+    text = ""
+    for page in reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + " "
+    return text
+
+
+@st.cache_resource(show_spinner="🧠 Loading smart extraction model (first time only)...")
+def load_ner_pipeline():
+    """Load a small Hugging Face NER model to help keep proper-noun phrases together.
+    Returns None if transformers/torch aren't installed, so callers can fall back gracefully."""
+    try:
+        from transformers import pipeline
+        return pipeline("ner", model="dslim/distilbert-NER", aggregation_strategy="simple")
+    except Exception:
+        return None
+
+
+def extract_ner_phrases(text, ner_pipe, chunk_chars=800):
+    """Run NER over the text in chunks and return multi-word phrases like 'Mount Rushmore'."""
+    phrases = set()
+    words_in_text = text.split()
+
+    chunks, chunk, chunk_len = [], [], 0
+    for w in words_in_text:
+        chunk.append(w)
+        chunk_len += len(w) + 1
+        if chunk_len >= chunk_chars:
+            chunks.append(" ".join(chunk))
+            chunk, chunk_len = [], 0
+    if chunk:
+        chunks.append(" ".join(chunk))
+
+    for c in chunks:
+        try:
+            entities = ner_pipe(c)
+        except Exception:
+            continue
+        for ent in entities:
+            phrase = ent.get('word', '').strip()
+            if phrase and not phrase.startswith('#') and len(phrase) >= 4:
+                phrases.add(phrase)
+    return phrases
+
+
+def extract_words_from_text(text, use_smart_extraction=False):
+    """Turn raw PDF text into a sorted, deduped word/phrase list (case preserved on first sighting)."""
+    phrases = set()
+    if use_smart_extraction:
+        ner_pipe = load_ner_pipeline()
+        if ner_pipe is not None:
+            try:
+                phrases = extract_ner_phrases(text, ner_pipe)
+            except Exception as e:
+                st.warning(f"⚠️ Smart extraction had an issue, using standard extraction instead. ({str(e)})")
+        else:
+            st.info("💡 Smart extraction needs extra packages (`pip install -r requirements-optional.txt`). Using standard extraction for now.")
+
+    words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
+    words = [w.strip() for w in words if len(w.strip()) >= 4]
+
+    unique_words = {}
+    for word in words:
+        lower_word = word.lower()
+        if lower_word not in unique_words:
+            unique_words[lower_word] = word
+
+    for phrase in phrases:
+        phrase_clean = phrase.strip()
+        if len(phrase_clean) < 4:
+            continue
+        lower_phrase = phrase_clean.lower()
+        if lower_phrase not in unique_words:
+            unique_words[lower_phrase] = phrase_clean
+        for part in phrase_clean.split():
+            unique_words.pop(part.lower(), None)
+
+    return [unique_words[key] for key in sorted(unique_words.keys())]
+
+
 # User Management Functions
 def load_users():
     """Load users data from JSON file."""
@@ -705,16 +823,18 @@ def quiz_tile(speech_rate=100):
         # Word source selection
         st.markdown("---")
         st.markdown("### 📚 Choose Word Source")
+        st.caption("Not sure which to pick? Try **📅 This Year's Word List** — it's already loaded for you, no file needed!")
         word_source = st.radio(
             "Select word source:",
-            options=["Predefined Source", "Upload PDF", "System Generated"],
+            options=["Predefined Source", "📅 This Year's Word List", "Upload PDF", "System Generated"],
             key="word_source_radio",
             horizontal=True
         )
-        
-        # Initialize quiz_pdf to None
+
+        # Initialize quiz_pdf / selected_pdf_path to None
         quiz_pdf = None
-        
+        selected_pdf_path = None
+
         if word_source == "Predefined Source":
             # Use predefined words array
             st.info("📚 Using predefined word list with 750 curated words")
@@ -749,11 +869,39 @@ def quiz_tile(speech_rate=100):
                 except Exception as e:
                     st.error(f"Error loading predefined words: {str(e)}")
                 
+        elif word_source == "📅 This Year's Word List":
+            # Teacher-provided, prepopulated word lists organized by year/division
+            available_years = get_available_years()
+            if not available_years:
+                st.warning("📭 No yearly word lists have been added yet. Ask your teacher, or pick another word source!")
+            else:
+                col_year, col_division = st.columns(2)
+                with col_year:
+                    selected_year = st.selectbox("📆 Year", options=available_years, key="year_select")
+
+                categories = get_categories_for_year(selected_year)
+                if not categories:
+                    st.warning(f"📭 No word lists found for {selected_year} yet.")
+                else:
+                    with col_division:
+                        selected_category = st.selectbox(
+                            "🏫 Division",
+                            options=categories,
+                            format_func=lambda c: c.replace('_', ' ').title(),
+                            key=f"category_select_{selected_year}"
+                        )
+                    pdf_path = get_pdf_path_for_category(selected_year, selected_category)
+                    if pdf_path:
+                        selected_pdf_path = pdf_path
+                        st.success(f"📖 Using the **{selected_category.title()}** list for **{selected_year}** ({pdf_path.name})")
+                    else:
+                        st.warning("📭 No PDF found for this division yet.")
+
         elif word_source == "Upload PDF":
             # PDF uploader for quiz words
+            st.caption("💡 Ask a parent or teacher to help you find the right PDF file if you're not sure!")
             quiz_pdf = st.file_uploader("Upload PDF for quiz words", type=["pdf"], key="quiz_pdf_uploader")
         else:
-            quiz_pdf = None
             # System generated word selection
             difficulty_level = st.selectbox(
                 "Select Difficulty Level:",
@@ -788,43 +936,37 @@ def quiz_tile(speech_rate=100):
                 st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from {difficulty_level}!")
                 st.info("👇 Select word range below and click 'Get Random Word' to start!")
                 st.rerun()
-        
-        # Check if PDF was just uploaded and needs processing
-        if quiz_pdf is not None and (not st.session_state.quiz_words or 'last_pdf_name' not in st.session_state or st.session_state.get('last_pdf_name') != quiz_pdf.name):
+
+        # Optional smart extraction toggle for PDF-based sources
+        use_smart_extraction = False
+        if word_source in ("Upload PDF", "📅 This Year's Word List") and (quiz_pdf is not None or selected_pdf_path is not None):
+            use_smart_extraction = st.checkbox(
+                "✨ Smart extraction (keeps proper-noun phrases like \"Mount Rushmore\" together)",
+                value=False,
+                key="use_smart_extraction",
+                help="Uses a small AI model (Hugging Face) to detect multi-word names. Downloads ~250MB the first time it's used."
+            )
+
+        # Check if a PDF (uploaded or a prepopulated yearly one) needs processing
+        pdf_source = quiz_pdf if quiz_pdf is not None else selected_pdf_path
+        pdf_identifier = quiz_pdf.name if quiz_pdf is not None else (str(selected_pdf_path) if selected_pdf_path else None)
+
+        if pdf_source is not None and (not st.session_state.quiz_words or st.session_state.get('last_pdf_name') != pdf_identifier):
             try:
-                reader = PyPDF2.PdfReader(quiz_pdf)
-                text = ""
-                for page in reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + " "
-                
-                # Very simple and universal extraction - just look for words/phrases with letters
-                # Pattern matches: single words, hyphenated words, apostrophe words, and multi-word phrases
-                words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
-                
-                # Basic filtering: only length check
-                words = [w.strip() for w in words if len(w.strip()) >= 4]
-                
-                # Remove duplicates while preserving original case and sort alphabetically
-                unique_words = {}
-                for word in words:
-                    lower_word = word.lower()
-                    if lower_word not in unique_words:
-                        unique_words[lower_word] = word
-                
-                all_words = [unique_words[key] for key in sorted(unique_words.keys())]
-                
+                with st.spinner("📖 Reading your PDF... this'll just take a moment!"):
+                    text = read_pdf_text(pdf_source)
+                    all_words = extract_words_from_text(text, use_smart_extraction=use_smart_extraction)
+
                 if not all_words:
                     st.error("No valid words found in PDF. Please upload a different PDF.")
                     st.info("💡 Make sure your PDF contains readable text (not scanned images).")
                     return
-                
+
                 # Store all words and select first 50 by default
                 st.session_state.all_loaded_words = all_words
                 st.session_state.quiz_words = all_words[:50] if len(all_words) > 50 else all_words
-                st.session_state.word_source_type = "pdf"
-                
+                st.session_state.word_source_type = "yearly" if selected_pdf_path is not None else "pdf"
+
                 # Reset quiz state when new PDF is loaded
                 st.session_state.used_quiz_words = []
                 st.session_state.current_quiz_word = None
@@ -833,10 +975,10 @@ def quiz_tile(speech_rate=100):
                 st.session_state.answer_submitted = False
                 st.session_state.wrong_attempts = []
                 st.session_state.quiz_history = []
-                st.session_state.last_pdf_name = quiz_pdf.name
+                st.session_state.last_pdf_name = pdf_identifier
                 st.session_state.leaderboard_saved = False
-                
-                st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words from PDF!")
+
+                st.success(f"✅ Loaded {len(st.session_state.all_loaded_words)} words!")
                 st.info("👇 Select word range below and click 'Get Random Word' to start!")
             except Exception as e:
                 st.error(f"Error reading PDF: {str(e)}")
@@ -1513,11 +1655,11 @@ def quiz_tile(speech_rate=100):
                     time.sleep(1)
                     st.rerun()
         else:
-            st.info("📤 Upload a PDF to start the pronunciation quiz!")
+            st.info("📤 Choose a word source above to start the pronunciation quiz!")
             st.markdown("""
             **How it works:**
-            1. Upload a PDF document
-            2. System will randomly select 50 words
+            1. Pick a word source: the predefined list, this year's official list, your own PDF, or a difficulty level
+            2. System will load words for you (up to 50 to start)
             3. Click 'Get Random Word' to start
             4. Listen to pronunciation (no spelling shown!)
             5. Type what you heard and check your answer
@@ -1825,16 +1967,13 @@ with tab2:
 with tab3:
     with st.container():
         st.markdown('<div class="tile"><div class="tile-title">📄 PDF Word Pronunciation</div>', unsafe_allow_html=True)
+        st.caption("💡 Ask a parent or teacher for help picking the file if you're not sure!")
         pdf_file = st.file_uploader("Upload PDF", type=["pdf"], key="pdf_file_uploader")
         pdf_words = []
         if pdf_file is not None:
-            reader = PyPDF2.PdfReader(pdf_file)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() + " "
-            import re
-            words = re.findall(r'\b[a-zA-Z]+\b', text)
-            pdf_words = sorted(set(word.lower() for word in words))
+            with st.spinner("📖 Reading your PDF..."):
+                text = read_pdf_text(pdf_file)
+                pdf_words = extract_words_from_text(text)
             st.write(f"Extracted {len(pdf_words)} unique words from PDF.")
             selected_word = st.selectbox("Select a word to learn pronunciation:", pdf_words)
             phones = pronouncing.phones_for_word(selected_word)
